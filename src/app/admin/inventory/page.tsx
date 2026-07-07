@@ -1,0 +1,20 @@
+import { createClient } from "@/lib/supabase/server";
+import { resolveBranches } from "@/lib/branches";
+import { InventoryClient } from "@/components/admin/InventoryClient";
+import type { InventoryItem } from "@/lib/types";
+
+export default async function InventoryPage() {
+  const supabase = await createClient();
+
+  const [{ data: branches }, { data: items }] = await Promise.all([
+    supabase.from("branches").select("*").order("name"),
+    supabase.from("inventory").select("*, branches(name)").order("item_name"),
+  ]);
+
+  return (
+    <InventoryClient
+      branches={resolveBranches(branches)}
+      initialItems={(items as InventoryItem[]) ?? []}
+    />
+  );
+}

@@ -1,36 +1,80 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# The Laundry
 
-## Getting Started
+A Next.js application for **The Laundry** laundromat — brochure website + admin dashboard backed by Supabase.
 
-First, run the development server:
+## Brand Colors
+
+| Color | Hex | Usage |
+|-------|-----|-------|
+| Light Blue | `#7EC8E3` | Accents, backgrounds, highlights |
+| Blue | `#3A8CC9` | Primary buttons, logo, links |
+| White | `#FFFFFF` | Backgrounds, cards |
+| Text (dark blue) | `#0B1D2E` | Body text, headings |
+
+## Branches
+
+- The Laundry Poblacion — Cauayan
+- The Laundry Dancalan — Ilog
+- The Laundry Tuyom — Cauayan
+
+## Setup
+
+### 1. Install dependencies
+
+```bash
+npm install
+```
+
+### 2. Environment variables
+
+Copy `.env.local.example` to `.env.local` and fill in your Supabase keys:
+
+```
+NEXT_PUBLIC_SUPABASE_URL=https://olhebajxmlrfjphkmikl.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your_publishable_key
+SUPABASE_SECRET_KEY=your_secret_key
+```
+
+### 3. Database schema
+
+Run the SQL in `supabase/schema.sql` in your Supabase SQL Editor. This creates:
+
+- `branches` — the 3 laundry locations
+- `daily_reports` — cash reconciliation (matches paper receipt form)
+- `transactions` — customer payments
+- `schedules` — pick-up & delivery appointments
+- `inventory` — supplies per branch
+
+### 4. Authentication
+
+In Supabase Dashboard → **Authentication** → **URL Configuration**:
+
+1. Set **Site URL** to `http://localhost:3000` (for local development)
+2. Add these **Redirect URLs**:
+   - `http://localhost:3000/auth/callback`
+   - `http://localhost:3000/**`
+3. Enable **Email** provider (for staff email/password login)
+4. Enable **Google** provider with your OAuth credentials
+5. Create staff users under Authentication → Users
+
+> When you deploy to production, update Site URL and Redirect URLs to your live domain.
+
+### 5. Run locally
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- Brochure site: [http://localhost:3000](http://localhost:3000)
+- Staff login: [http://localhost:3000/login](http://localhost:3000/login)
+- Admin dashboard: [http://localhost:3000/admin](http://localhost:3000/admin)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Admin Features
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+| Page | Path | Description |
+|------|------|-------------|
+| Dashboard | `/admin` | Today's totals — cash received, unpaid, sales |
+| Reports | `/admin/reports` | Daily cash reconciliation by denomination |
+| Transactions | `/admin/transactions` | Payment records (paid/unpaid/partial) |
+| Schedules | `/admin/schedules` | Pick-up & delivery appointments |
+| Inventory | `/admin/inventory` | Supplies tracking with low-stock alerts |
