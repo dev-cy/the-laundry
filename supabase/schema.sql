@@ -106,6 +106,18 @@ CREATE TABLE IF NOT EXISTS staff (
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- Cash releases (release cash on hand)
+CREATE TABLE IF NOT EXISTS cash_releases (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+  amount INT NOT NULL CHECK (amount > 0),
+  release_date DATE NOT NULL DEFAULT CURRENT_DATE,
+  notes TEXT,
+  created_by UUID REFERENCES auth.users(id),
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
 -- Inventory (detergent, softener, hangers, etc.)
 CREATE TABLE IF NOT EXISTS inventory (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -127,6 +139,7 @@ ALTER TABLE daily_reports ENABLE ROW LEVEL SECURITY;
 ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE schedules ENABLE ROW LEVEL SECURITY;
 ALTER TABLE staff ENABLE ROW LEVEL SECURITY;
+ALTER TABLE cash_releases ENABLE ROW LEVEL SECURITY;
 ALTER TABLE inventory ENABLE ROW LEVEL SECURITY;
 
 -- Public read for branches (brochure site)
@@ -145,6 +158,7 @@ CREATE POLICY "Auth users manage report_entries" ON report_entries FOR ALL USING
 CREATE POLICY "Auth users manage transactions" ON transactions FOR ALL USING (auth.role() = 'authenticated');
 CREATE POLICY "Auth users manage schedules" ON schedules FOR ALL USING (auth.role() = 'authenticated');
 CREATE POLICY "Auth users manage staff" ON staff FOR ALL USING (auth.role() = 'authenticated');
+CREATE POLICY "Auth users manage cash_releases" ON cash_releases FOR ALL USING (auth.role() = 'authenticated');
 CREATE POLICY "Auth users manage inventory" ON inventory FOR ALL USING (auth.role() = 'authenticated');
 
 -- Updated_at trigger
@@ -160,11 +174,13 @@ DROP TRIGGER IF EXISTS daily_reports_updated_at ON daily_reports;
 DROP TRIGGER IF EXISTS transactions_updated_at ON transactions;
 DROP TRIGGER IF EXISTS schedules_updated_at ON schedules;
 DROP TRIGGER IF EXISTS staff_updated_at ON staff;
+DROP TRIGGER IF EXISTS cash_releases_updated_at ON cash_releases;
 DROP TRIGGER IF EXISTS inventory_updated_at ON inventory;
 CREATE TRIGGER daily_reports_updated_at BEFORE UPDATE ON daily_reports FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER transactions_updated_at BEFORE UPDATE ON transactions FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER schedules_updated_at BEFORE UPDATE ON schedules FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER staff_updated_at BEFORE UPDATE ON staff FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER cash_releases_updated_at BEFORE UPDATE ON cash_releases FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER inventory_updated_at BEFORE UPDATE ON inventory FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 -- Migration (run if you already deployed an earlier schema):

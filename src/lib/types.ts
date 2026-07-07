@@ -103,6 +103,18 @@ export interface Staff {
   branches?: Branch;
 }
 
+export interface CashRelease {
+  id: string;
+  branch_id: string;
+  amount: number;
+  release_date: string;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  branches?: Branch;
+}
+
 export type CashQuantities = {
   qty_1: number;
   qty_5: number;

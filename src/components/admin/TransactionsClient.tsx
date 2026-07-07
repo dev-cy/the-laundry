@@ -12,9 +12,11 @@ import { Plus, Pencil } from "lucide-react";
 export function TransactionsClient({
   branches,
   initialTransactions,
+  lockedBranchId,
 }: {
   branches: Branch[];
   initialTransactions: Transaction[];
+  lockedBranchId?: string | null;
 }) {
   const supabase = createClient();
   const [transactions, setTransactions] = useState(initialTransactions);
@@ -24,7 +26,7 @@ export function TransactionsClient({
   const [error, setError] = useState<string | null>(null);
 
   const [form, setForm] = useState({
-    branch_id: branches[0]?.id ?? "",
+    branch_id: lockedBranchId ?? branches[0]?.id ?? "",
     customer_name: "",
     description: "",
     amount: 0,
@@ -36,7 +38,7 @@ export function TransactionsClient({
   function openNew() {
     setEditing(null);
     setForm({
-      branch_id: branches[0]?.id ?? "",
+      branch_id: lockedBranchId ?? branches[0]?.id ?? "",
       customer_name: "",
       description: "",
       amount: 0,
@@ -100,6 +102,32 @@ export function TransactionsClient({
     partial: "text-blue-600 bg-blue-50",
   };
 
+  const dailySummary = Object.values(
+    transactions.reduce<
+      Record<
+        string,
+        { date: string; total: number; unpaid: number; count: number; branchNames: Set<string> }
+      >
+    >((acc, tx) => {
+      const key = tx.transaction_date;
+      if (!acc[key]) {
+        acc[key] = {
+          date: key,
+          total: 0,
+          unpaid: 0,
+          count: 0,
+          branchNames: new Set<string>(),
+        };
+      }
+      acc[key].total += tx.amount;
+      if (tx.payment_status === "unpaid") acc[key].unpaid += tx.amount;
+      acc[key].count += 1;
+      const branchName = (tx.branches as { name: string } | undefined)?.name;
+      if (branchName) acc[key].branchNames.add(branchName);
+      return acc;
+    }, {})
+  ).sort((a, b) => b.date.localeCompare(a.date));
+
   return (
     <div>
       <div className="flex items-center justify-between mb-8">
@@ -129,6 +157,7 @@ export function TransactionsClient({
               value={form.branch_id}
               onChange={(e) => setForm({ ...form, branch_id: e.target.value })}
               options={branches.map((b) => ({ value: b.id, label: b.name }))}
+              disabled={Boolean(lockedBranchId)}
             />
             <Input
               label="Date"
@@ -196,6 +225,44 @@ export function TransactionsClient({
           </form>
         </div>
       )}
+
+      <div className="mb-8 rounded-xl border border-brand-blue/10 bg-white overflow-hidden">
+        <div className="px-4 py-3 bg-brand-light/30 border-b border-brand-blue/10">
+          <h2 className="text-sm font-semibold text-brand-text">Daily Summary</h2>
+        </div>
+        <table className="w-full text-sm">
+          <thead className="bg-brand-light/10">
+            <tr>
+              <th className="text-left px-4 py-2 font-semibold">Date</th>
+              <th className="text-left px-4 py-2 font-semibold">Branches</th>
+              <th className="text-right px-4 py-2 font-semibold">Transactions</th>
+              <th className="text-right px-4 py-2 font-semibold">Total</th>
+              <th className="text-right px-4 py-2 font-semibold">Unpaid</th>
+            </tr>
+          </thead>
+          <tbody>
+            {dailySummary.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="px-4 py-6 text-center text-brand-text/50">
+                  No daily summary yet.
+                </td>
+              </tr>
+            ) : (
+              dailySummary.map((d) => (
+                <tr key={d.date} className="border-t border-brand-blue/5">
+                  <td className="px-4 py-2">{d.date}</td>
+                  <td className="px-4 py-2 text-brand-text/70">
+                    {Array.from(d.branchNames).join(", ") || "—"}
+                  </td>
+                  <td className="px-4 py-2 text-right">{d.count}</td>
+                  <td className="px-4 py-2 text-right font-medium">{formatCurrency(d.total)}</td>
+                  <td className="px-4 py-2 text-right text-amber-600">{formatCurrency(d.unpaid)}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
 
       <div className="rounded-xl border border-brand-blue/10 bg-white overflow-hidden">
         <table className="w-full text-sm">
