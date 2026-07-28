@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { StatCard } from "@/components/ui/StatCard";
 import { Select } from "@/components/ui/Select";
 import type { Branch } from "@/lib/types";
-import type { AppRole } from "@/lib/auth/roles";
+import { isAdminLike, type AppRole } from "@/lib/auth/roles";
 
 type DashboardStats = {
   totalCash: number;
@@ -87,8 +87,9 @@ export function DashboardClient({
       await Promise.all([reportsQuery, txQuery, schedulesQuery, inventoryQuery]);
 
     const totalCash = reports?.reduce((s, r) => s + r.total_cash, 0) ?? 0;
-    const totalUnpaid =
-      reports?.reduce((s, r) => s + r.unpaid, 0) ?? unpaidTx?.reduce((s, t) => s + t.amount, 0) ?? 0;
+    const reportUnpaid = reports?.reduce((s, r) => s + r.unpaid, 0) ?? 0;
+    const txUnpaid = unpaidTx?.reduce((s, t) => s + t.amount, 0) ?? 0;
+    const totalUnpaid = (reports?.length ?? 0) > 0 ? reportUnpaid : txUnpaid;
     const totalSales = reports?.reduce((s, r) => s + r.total_sales, 0) ?? 0;
     const lowStockCount = lowStock?.filter((i) => i.quantity <= i.low_stock_threshold).length ?? 0;
 
@@ -109,7 +110,7 @@ export function DashboardClient({
           <h1 className="text-2xl font-bold text-brand-text mb-1">Dashboard</h1>
           <p className="text-brand-text/60">Overview for today - {today}</p>
         </div>
-        {role === "admin" && (
+        {isAdminLike(role) && (
           <div className="w-full sm:w-64">
             <Select
               label="Branch Filter"
@@ -137,7 +138,7 @@ export function DashboardClient({
         </div>
       )}
 
-      {role === "admin" && stats.lowStockCount > 0 && (
+      {isAdminLike(role) && stats.lowStockCount > 0 && (
         <div className="mb-8 rounded-xl bg-amber-50 border border-amber-200 px-5 py-4">
           <p className="text-sm text-amber-800">
             <strong>{stats.lowStockCount}</strong> inventory item

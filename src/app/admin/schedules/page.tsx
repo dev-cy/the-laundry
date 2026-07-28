@@ -1,10 +1,15 @@
 import { createClient } from "@/lib/supabase/server";
+import { getUserRole } from "@/lib/auth/roles";
 import { resolveBranches } from "@/lib/branches";
 import { SchedulesClient } from "@/components/admin/SchedulesClient";
 import type { Schedule, Staff } from "@/lib/types";
 
 export default async function SchedulesPage() {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const role = getUserRole(user);
 
   const [{ data: branches }, { data: schedules }, { data: staff }] = await Promise.all([
     supabase.from("branches").select("*").order("name"),
@@ -21,6 +26,7 @@ export default async function SchedulesPage() {
       branches={resolveBranches(branches)}
       initialSchedules={(schedules as Schedule[]) ?? []}
       staff={(staff as Staff[]) ?? []}
+      role={role}
     />
   );
 }

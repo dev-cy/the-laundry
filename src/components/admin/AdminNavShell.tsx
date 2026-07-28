@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { createClient } from "@/lib/supabase/client";
-import type { AppRole } from "@/lib/auth/roles";
+import { roleLabel, type AppRole } from "@/lib/auth/roles";
 
 const NAV_ITEMS = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
@@ -102,8 +102,8 @@ export function AdminNavShell({
         <div className="p-4 border-t border-white/10">
           {userEmail && <p className="text-xs text-white/50 mb-3 truncate">{userEmail}</p>}
           <div className="mb-3">
-            <span className="inline-flex items-center rounded-full border border-white/20 bg-white/10 px-2.5 py-0.5 text-xs font-medium capitalize text-white/90">
-              {role}
+            <span className="inline-flex items-center rounded-full border border-white/20 bg-white/10 px-2.5 py-0.5 text-xs font-medium text-white/90">
+              {roleLabel(role)}
             </span>
           </div>
           <button

@@ -1,10 +1,18 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getUserRole, type AppRole } from "@/lib/auth/roles";
+import {
+  canManageUsers,
+  getUserRole,
+  type AppRole,
+} from "@/lib/auth/roles";
 
 function unauthorized() {
   return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+}
+
+function isValidRole(role: unknown): role is AppRole {
+  return role === "super_admin" || role === "admin" || role === "staff";
 }
 
 export async function GET() {
@@ -13,7 +21,7 @@ export async function GET() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user || getUserRole(user) !== "admin") return unauthorized();
+  if (!user || !canManageUsers(getUserRole(user))) return unauthorized();
 
   try {
     const admin = createAdminClient();
@@ -29,12 +37,13 @@ export async function GET() {
       email: u.email ?? "-",
       created_at: u.created_at,
       role: getUserRole(u),
-      branch_id:
-        (u.app_metadata?.branch_id as string | undefined) ??
-        (u.user_metadata?.branch_id as string | undefined) ??
-        null,
+      branch_id: (u.app_metadata?.branch_id as string | undefined) ?? null,
     }));
-    return NextResponse.json({ users, branches: branches ?? [] });
+    return NextResponse.json({
+      users,
+      branches: branches ?? [],
+      currentUserRole: getUserRole(user),
+    });
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Failed to fetch users." },
@@ -49,14 +58,23 @@ export async function PATCH(request: Request) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user || getUserRole(user) !== "admin") return unauthorized();
+  const actorRole = user ? getUserRole(user) : null;
+  if (!user || !actorRole || !canManageUsers(actorRole)) return unauthorized();
 
   const body = (await request.json()) as { userId?: string; role?: AppRole; branchId?: string | null };
   const userId = body.userId ?? "";
   const role = body.role;
   const branchId = body.branchId ?? null;
-  if (!userId || (role !== "admin" && role !== "staff")) {
+  if (!userId || !isValidRole(role)) {
     return NextResponse.json({ error: "Invalid payload." }, { status: 400 });
+  }
+
+  // Only super admins can assign or change the super_admin role.
+  if (role === "super_admin" && actorRole !== "super_admin") {
+    return NextResponse.json(
+      { error: "Only a Super Admin can assign the Super Admin role." },
+      { status: 403 }
+    );
   }
 
   if (role === "staff" && !branchId) {
@@ -77,11 +95,43 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: fetchError?.message ?? "User not found." }, { status: 404 });
     }
 
+    const targetRole = getUserRole(found.user);
+
+    // Regular admins cannot change an existing super_admin.
+    if (targetRole === "super_admin" && actorRole !== "super_admin") {
+      return NextResponse.json(
+        { error: "Only a Super Admin can change another Super Admin." },
+        { status: 403 }
+      );
+    }
+
+    // Prevent demoting yourself if you are the last super admin.
+    if (
+      user.id === userId &&
+      actorRole === "super_admin" &&
+      role !== "super_admin"
+    ) {
+      const { data: listed } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+      const otherSuperAdmins = (listed?.users ?? []).filter(
+        (u) => u.id !== userId && getUserRole(u) === "super_admin"
+      );
+      if (otherSuperAdmins.length === 0) {
+        return NextResponse.json(
+          { error: "Cannot demote the last Super Admin. Promote another user first." },
+          { status: 400 }
+        );
+      }
+    }
+
     const appMeta = found.user.app_metadata ?? {};
-    const userMeta = found.user.user_metadata ?? {};
+    const userMeta = { ...(found.user.user_metadata ?? {}) };
+    // Role/branch for auth live only in app_metadata (clients can edit user_metadata).
+    delete userMeta.role;
+    delete userMeta.branch_id;
+
     const { error: updateError } = await admin.auth.admin.updateUserById(userId, {
       app_metadata: { ...appMeta, role, branch_id: role === "staff" ? branchId : null },
-      user_metadata: { ...userMeta, role, branch_id: role === "staff" ? branchId : null },
+      user_metadata: userMeta,
     });
     if (updateError) return NextResponse.json({ error: updateError.message }, { status: 400 });
 

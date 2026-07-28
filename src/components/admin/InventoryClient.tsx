@@ -4,17 +4,20 @@ import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { todayISO } from "@/lib/utils";
 import type { Branch, InventoryItem } from "@/lib/types";
+import { canDeleteEntries, type AppRole } from "@/lib/auth/roles";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { Plus, Pencil, AlertTriangle, ArrowRightLeft } from "lucide-react";
+import { Plus, Pencil, AlertTriangle, ArrowRightLeft, Trash2 } from "lucide-react";
 
 export function InventoryClient({
   branches,
   initialItems,
+  role,
 }: {
   branches: Branch[];
   initialItems: InventoryItem[];
+  role: AppRole;
 }) {
   const supabase = createClient();
   const [items, setItems] = useState(initialItems);
@@ -24,9 +27,11 @@ export function InventoryClient({
   const [searchQuery, setSearchQuery] = useState("");
   const [editing, setEditing] = useState<InventoryItem | null>(null);
   const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [transferError, setTransferError] = useState<string | null>(null);
   const [transferring, setTransferring] = useState(false);
+  const canDelete = canDeleteEntries(role);
 
   const [form, setForm] = useState({
     branch_id: branches[0]?.id ?? "",
@@ -97,6 +102,26 @@ export function InventoryClient({
     if (data) setItems(data as InventoryItem[]);
     setShowForm(false);
     setEditing(null);
+  }
+
+  async function handleDelete(item: InventoryItem) {
+    if (!canDelete) return;
+    if (
+      !window.confirm(
+        `Delete inventory item "${item.item_name}"? This cannot be undone.`
+      )
+    ) {
+      return;
+    }
+    setDeletingId(item.id);
+    const { error: deleteError } = await supabase.from("inventory").delete().eq("id", item.id);
+    setDeletingId(null);
+    if (deleteError) {
+      window.alert(deleteError.message);
+      return;
+    }
+    if (editing?.id === item.id) setEditing(null);
+    await refresh();
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -445,12 +470,25 @@ export function InventoryClient({
                     </td>
                     <td className="px-4 py-3">{item.last_restocked ?? "—"}</td>
                     <td className="px-4 py-3">
-                      <button
-                        onClick={() => openEdit(item)}
-                        className="text-brand-blue hover:text-brand-blue/70"
-                      >
-                        <Pencil className="w-4 h-4" />
-                      </button>
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => openEdit(item)}
+                          className="text-brand-blue hover:text-brand-blue/70"
+                          aria-label="Edit inventory item"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                        {canDelete && (
+                          <button
+                            onClick={() => handleDelete(item)}
+                            disabled={deletingId === item.id}
+                            className="text-red-600 hover:text-red-500 disabled:opacity-50"
+                            aria-label="Delete inventory item"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );

@@ -3,25 +3,30 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { Branch, Staff } from "@/lib/types";
+import { canDeleteEntries, type AppRole } from "@/lib/auth/roles";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { Pencil, Plus } from "lucide-react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 import { formatCurrency, todayISO } from "@/lib/utils";
 
 export function StaffClient({
   branches,
   initialStaff,
+  role,
 }: {
   branches: Branch[];
   initialStaff: Staff[];
+  role: AppRole;
 }) {
   const supabase = createClient();
   const [staff, setStaff] = useState(initialStaff);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Staff | null>(null);
   const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const canDelete = canDeleteEntries(role);
 
   const [form, setForm] = useState({
     branch_id: branches[0]?.id ?? "",
@@ -79,6 +84,20 @@ export function StaffClient({
     if (data) setStaff(data as Staff[]);
     setShowForm(false);
     setEditing(null);
+  }
+
+  async function handleDelete(member: Staff) {
+    if (!canDelete) return;
+    if (!window.confirm(`Delete staff record for ${member.name}? This cannot be undone.`)) return;
+    setDeletingId(member.id);
+    const { error: deleteError } = await supabase.from("staff").delete().eq("id", member.id);
+    setDeletingId(null);
+    if (deleteError) {
+      window.alert(deleteError.message);
+      return;
+    }
+    if (editing?.id === member.id) setEditing(null);
+    await refresh();
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -240,12 +259,25 @@ export function StaffClient({
                   <td className="px-4 py-3">{member.date_hired ?? "-"}</td>
                   <td className="px-4 py-3 text-right">{formatCurrency(member.salary)}</td>
                   <td className="px-4 py-3">
-                    <button
-                      onClick={() => openEdit(member)}
-                      className="text-brand-blue hover:text-brand-blue/70"
-                    >
-                      <Pencil className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        onClick={() => openEdit(member)}
+                        className="text-brand-blue hover:text-brand-blue/70"
+                        aria-label="Edit staff"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      {canDelete && (
+                        <button
+                          onClick={() => handleDelete(member)}
+                          disabled={deletingId === member.id}
+                          className="text-red-600 hover:text-red-500 disabled:opacity-50"
+                          aria-label="Delete staff"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))

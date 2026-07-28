@@ -5,11 +5,11 @@ import { createClient } from "@/lib/supabase/client";
 import { DENOMINATIONS } from "@/lib/constants";
 import { calcTotalCash, formatCurrency, todayISO } from "@/lib/utils";
 import type { Branch, DailyReport, CashQuantities } from "@/lib/types";
-import type { AppRole } from "@/lib/auth/roles";
+import { canDeleteEntries, isAdminLike, type AppRole } from "@/lib/auth/roles";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { Pencil, Plus } from "lucide-react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 
 const emptyQty = (): CashQuantities => ({
   qty_1: 0,
@@ -120,7 +120,7 @@ export function ReportForm({
     setError(null);
 
     const payload = {
-      branch_id: branchId,
+      branch_id: lockedBranchId ?? branchId,
       report_date: reportDate,
       staff_names: staffNames,
       ...quantities,
@@ -234,7 +234,7 @@ export function ReportForm({
         </div>
       </div>
 
-      {role === "admin" && (
+      {isAdminLike(role) && (
         <div className="rounded-xl bg-brand-light/10 border border-brand-blue/10 overflow-x-auto">
           <div className="min-w-[640px] grid grid-cols-4 gap-4 p-4">
             <div className="flex flex-col gap-1">
@@ -299,18 +299,40 @@ export function ReportsPageClient({
   const [reports, setReports] = useState(initialReports);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<DailyReport | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const canDelete = canDeleteEntries(role);
 
   async function refresh() {
     const supabase = createClient();
-    const { data: reportsData } = await supabase
+    let query = supabase
       .from("daily_reports")
       .select("*, branches(name)")
       .order("report_date", { ascending: false })
       .limit(50);
+    if (lockedBranchId) query = query.eq("branch_id", lockedBranchId);
+
+    const { data: reportsData } = await query;
 
     if (reportsData) setReports(reportsData as DailyReport[]);
     setShowForm(false);
     setEditing(null);
+  }
+
+  async function handleDelete(report: DailyReport) {
+    if (!canDelete) return;
+    const label = `${report.report_date} — ${(report.branches as { name: string } | undefined)?.name ?? "branch"}`;
+    if (!window.confirm(`Delete daily report for ${label}? This cannot be undone.`)) return;
+
+    setDeletingId(report.id);
+    const supabase = createClient();
+    const { error } = await supabase.from("daily_reports").delete().eq("id", report.id);
+    setDeletingId(null);
+    if (error) {
+      window.alert(error.message);
+      return;
+    }
+    if (editing?.id === report.id) setEditing(null);
+    await refresh();
   }
 
   return (
@@ -384,15 +406,28 @@ export function ReportsPageClient({
                     {formatCurrency(r.total_sales)}
                   </td>
                   <td className="px-4 py-3">
-                    <button
-                      onClick={() => {
-                        setEditing(r);
-                        setShowForm(false);
-                      }}
-                      className="text-brand-blue hover:text-brand-blue/70"
-                    >
-                      <Pencil className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        onClick={() => {
+                          setEditing(r);
+                          setShowForm(false);
+                        }}
+                        className="text-brand-blue hover:text-brand-blue/70"
+                        aria-label="Edit report"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      {canDelete && (
+                        <button
+                          onClick={() => handleDelete(r)}
+                          disabled={deletingId === r.id}
+                          className="text-red-600 hover:text-red-500 disabled:opacity-50"
+                          aria-label="Delete report"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))

@@ -3,25 +3,30 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { Branch, CashRelease } from "@/lib/types";
+import { canDeleteEntries, type AppRole } from "@/lib/auth/roles";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { Plus, Pencil } from "lucide-react";
+import { Plus, Pencil, Trash2 } from "lucide-react";
 import { formatCurrency, todayISO } from "@/lib/utils";
 
 export function CashReleaseClient({
   branches,
   initialReleases,
+  role,
 }: {
   branches: Branch[];
   initialReleases: CashRelease[];
+  role: AppRole;
 }) {
   const supabase = createClient();
   const [releases, setReleases] = useState(initialReleases);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<CashRelease | null>(null);
   const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const canDelete = canDeleteEntries(role);
 
   const [form, setForm] = useState({
     branch_id: branches[0]?.id ?? "",
@@ -61,6 +66,29 @@ export function CashReleaseClient({
     if (data) setReleases(data as CashRelease[]);
     setShowForm(false);
     setEditing(null);
+  }
+
+  async function handleDelete(release: CashRelease) {
+    if (!canDelete) return;
+    if (
+      !window.confirm(
+        `Delete cash release of ${formatCurrency(release.amount)} on ${release.release_date}? This cannot be undone.`
+      )
+    ) {
+      return;
+    }
+    setDeletingId(release.id);
+    const { error: deleteError } = await supabase
+      .from("cash_releases")
+      .delete()
+      .eq("id", release.id);
+    setDeletingId(null);
+    if (deleteError) {
+      window.alert(deleteError.message);
+      return;
+    }
+    if (editing?.id === release.id) setEditing(null);
+    await refresh();
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -183,12 +211,25 @@ export function CashReleaseClient({
                   </td>
                   <td className="px-4 py-3">{release.notes ?? "-"}</td>
                   <td className="px-4 py-3">
-                    <button
-                      onClick={() => openEdit(release)}
-                      className="text-brand-blue hover:text-brand-blue/70"
-                    >
-                      <Pencil className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        onClick={() => openEdit(release)}
+                        className="text-brand-blue hover:text-brand-blue/70"
+                        aria-label="Edit cash release"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      {canDelete && (
+                        <button
+                          onClick={() => handleDelete(release)}
+                          disabled={deletingId === release.id}
+                          className="text-red-600 hover:text-red-500 disabled:opacity-50"
+                          aria-label="Delete cash release"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))

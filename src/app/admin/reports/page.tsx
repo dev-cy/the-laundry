@@ -11,6 +11,16 @@ export default async function ReportsPage() {
   } = await supabase.auth.getUser();
   const role = getUserRole(user);
   const assignedBranchId = getAssignedBranchId(user);
+  const staffNeedsBranch = role === "staff" && !assignedBranchId;
+
+  if (staffNeedsBranch) {
+    return (
+      <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+        Your staff account has no assigned branch. Ask an admin to assign one on the Users page
+        before you can view or create reports.
+      </div>
+    );
+  }
 
   const reportsQuery = supabase
     .from("daily_reports")

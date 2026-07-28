@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
 import type { AppRole } from "@/lib/auth/roles";
+import { roleLabel } from "@/lib/auth/roles";
 
 type ListedUser = {
   id: string;
@@ -27,11 +28,14 @@ function formatCreatedDate(value: string): string {
 export function UsersAdminClient() {
   const [users, setUsers] = useState<ListedUser[]>([]);
   const [branches, setBranches] = useState<BranchOption[]>([]);
+  const [currentUserRole, setCurrentUserRole] = useState<AppRole>("admin");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [roleDrafts, setRoleDrafts] = useState<Record<string, AppRole>>({});
   const [branchDrafts, setBranchDrafts] = useState<Record<string, string>>({});
   const [savingUserId, setSavingUserId] = useState<string | null>(null);
+
+  const canAssignSuperAdmin = currentUserRole === "super_admin";
 
   async function fetchUsers() {
     setLoading(true);
@@ -40,6 +44,7 @@ export function UsersAdminClient() {
     const data = (await res.json()) as {
       users?: ListedUser[];
       branches?: BranchOption[];
+      currentUserRole?: AppRole;
       error?: string;
     };
     if (!res.ok) {
@@ -51,6 +56,7 @@ export function UsersAdminClient() {
     const branchList = data.branches ?? [];
     setUsers(list);
     setBranches(branchList);
+    setCurrentUserRole(data.currentUserRole ?? "admin");
     setRoleDrafts(Object.fromEntries(list.map((u) => [u.id, u.role])));
     setBranchDrafts(Object.fromEntries(list.map((u) => [u.id, u.branch_id ?? ""])));
     setLoading(false);
@@ -84,6 +90,17 @@ export function UsersAdminClient() {
     await fetchUsers();
   }
 
+  function roleOptionsFor(user: ListedUser): { value: AppRole; label: string }[] {
+    const options: { value: AppRole; label: string }[] = [
+      { value: "admin", label: "Admin" },
+      { value: "staff", label: "Staff" },
+    ];
+    if (canAssignSuperAdmin || user.role === "super_admin") {
+      options.unshift({ value: "super_admin", label: "Super Admin" });
+    }
+    return options;
+  }
+
   if (loading) {
     return (
       <div className="rounded-xl border border-brand-blue/10 bg-white p-6 text-sm text-brand-text/60">
@@ -98,6 +115,12 @@ export function UsersAdminClient() {
         <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
           {error}
         </div>
+      )}
+      {!canAssignSuperAdmin && (
+        <p className="mb-4 text-sm text-brand-text/60">
+          You are signed in as {roleLabel(currentUserRole)}. Only a Super Admin can assign the Super
+          Admin role.
+        </p>
       )}
       <div className="rounded-xl border border-brand-blue/10 bg-white overflow-x-auto">
         <table className="w-full min-w-[980px] text-sm">
@@ -118,52 +141,60 @@ export function UsersAdminClient() {
                 </td>
               </tr>
             ) : (
-              users.map((u) => (
-                <tr key={u.id} className="border-t border-brand-blue/5">
-                  <td className="px-4 py-3">{u.email}</td>
-                  <td className="px-4 py-3">{formatCreatedDate(u.created_at)}</td>
-                  <td className="px-4 py-3 w-44">
-                    <Select
-                      label=""
-                      value={roleDrafts[u.id] ?? u.role}
-                      onChange={(e) =>
-                        setRoleDrafts((prev) => ({ ...prev, [u.id]: e.target.value as AppRole }))
-                      }
-                      options={[
-                        { value: "admin", label: "Admin" },
-                        { value: "staff", label: "Staff" },
-                      ]}
-                    />
-                  </td>
-                  <td className="px-4 py-3 w-72">
-                    {roleDrafts[u.id] === "staff" ? (
+              users.map((u) => {
+                const locked =
+                  u.role === "super_admin" && currentUserRole !== "super_admin";
+                return (
+                  <tr key={u.id} className="border-t border-brand-blue/5">
+                    <td className="px-4 py-3">{u.email}</td>
+                    <td className="px-4 py-3">{formatCreatedDate(u.created_at)}</td>
+                    <td className="px-4 py-3 w-52">
                       <Select
                         label=""
-                        value={branchDrafts[u.id] ?? ""}
+                        value={roleDrafts[u.id] ?? u.role}
+                        disabled={locked}
                         onChange={(e) =>
-                          setBranchDrafts((prev) => ({ ...prev, [u.id]: e.target.value }))
+                          setRoleDrafts((prev) => ({
+                            ...prev,
+                            [u.id]: e.target.value as AppRole,
+                          }))
                         }
-                        options={[
-                          { value: "", label: "Select branch" },
-                          ...branches.map((b) => ({ value: b.id, label: b.name })),
-                        ]}
+                        options={roleOptionsFor(u)}
                       />
-                    ) : (
-                      <span className="text-brand-text/40 text-xs">Not required for Admin</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 w-28">
-                    <Button
-                      type="button"
-                      size="sm"
-                      disabled={savingUserId === u.id}
-                      onClick={() => saveRole(u.id)}
-                    >
-                      {savingUserId === u.id ? "Saving..." : "Save"}
-                    </Button>
-                  </td>
-                </tr>
-              ))
+                    </td>
+                    <td className="px-4 py-3 w-72">
+                      {roleDrafts[u.id] === "staff" ? (
+                        <Select
+                          label=""
+                          value={branchDrafts[u.id] ?? ""}
+                          disabled={locked}
+                          onChange={(e) =>
+                            setBranchDrafts((prev) => ({ ...prev, [u.id]: e.target.value }))
+                          }
+                          options={[
+                            { value: "", label: "Select branch" },
+                            ...branches.map((b) => ({ value: b.id, label: b.name })),
+                          ]}
+                        />
+                      ) : (
+                        <span className="text-brand-text/40 text-xs">
+                          Not required for {roleLabel(roleDrafts[u.id] ?? u.role)}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 w-28">
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={locked || savingUserId === u.id}
+                        onClick={() => saveRole(u.id)}
+                      >
+                        {savingUserId === u.id ? "Saving..." : "Save"}
+                      </Button>
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>

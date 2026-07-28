@@ -4,26 +4,31 @@ import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency, todayISO } from "@/lib/utils";
 import type { Branch, Transaction } from "@/lib/types";
+import { canDeleteEntries, type AppRole } from "@/lib/auth/roles";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { Plus, Pencil } from "lucide-react";
+import { Plus, Pencil, Trash2 } from "lucide-react";
 
 export function TransactionsClient({
   branches,
   initialTransactions,
   lockedBranchId,
+  role,
 }: {
   branches: Branch[];
   initialTransactions: Transaction[];
   lockedBranchId?: string | null;
+  role: AppRole;
 }) {
   const supabase = createClient();
   const [transactions, setTransactions] = useState(initialTransactions);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const canDelete = canDeleteEntries(role);
 
   const [form, setForm] = useState({
     branch_id: lockedBranchId ?? branches[0]?.id ?? "",
@@ -64,14 +69,37 @@ export function TransactionsClient({
   }
 
   async function refresh() {
-    const { data } = await supabase
+    let query = supabase
       .from("transactions")
       .select("*, branches(name)")
       .order("transaction_date", { ascending: false })
       .limit(100);
+    if (lockedBranchId) query = query.eq("branch_id", lockedBranchId);
+
+    const { data } = await query;
     if (data) setTransactions(data as Transaction[]);
     setShowForm(false);
     setEditing(null);
+  }
+
+  async function handleDelete(t: Transaction) {
+    if (!canDelete) return;
+    if (
+      !window.confirm(
+        `Delete transaction for ${t.customer_name || "customer"} on ${t.transaction_date}? This cannot be undone.`
+      )
+    ) {
+      return;
+    }
+    setDeletingId(t.id);
+    const { error: deleteError } = await supabase.from("transactions").delete().eq("id", t.id);
+    setDeletingId(null);
+    if (deleteError) {
+      window.alert(deleteError.message);
+      return;
+    }
+    if (editing?.id === t.id) setEditing(null);
+    await refresh();
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -81,6 +109,7 @@ export function TransactionsClient({
 
     const payload = {
       ...form,
+      branch_id: lockedBranchId ?? form.branch_id,
       customer_name: form.customer_name || null,
     };
 
@@ -304,12 +333,25 @@ export function TransactionsClient({
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <button
-                      onClick={() => openEdit(t)}
-                      className="text-brand-blue hover:text-brand-blue/70"
-                    >
-                      <Pencil className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        onClick={() => openEdit(t)}
+                        className="text-brand-blue hover:text-brand-blue/70"
+                        aria-label="Edit transaction"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      {canDelete && (
+                        <button
+                          onClick={() => handleDelete(t)}
+                          disabled={deletingId === t.id}
+                          className="text-red-600 hover:text-red-500 disabled:opacity-50"
+                          aria-label="Delete transaction"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))

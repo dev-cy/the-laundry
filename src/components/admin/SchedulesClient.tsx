@@ -4,10 +4,11 @@ import { useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { todayISO } from "@/lib/utils";
 import type { Branch, Schedule, Staff } from "@/lib/types";
+import { canDeleteEntries, type AppRole } from "@/lib/auth/roles";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { Plus, Pencil } from "lucide-react";
+import { Plus, Pencil, Trash2 } from "lucide-react";
 import {
   addMonths,
   eachDayOfInterval,
@@ -25,17 +26,21 @@ export function SchedulesClient({
   branches,
   initialSchedules,
   staff,
+  role,
 }: {
   branches: Branch[];
   initialSchedules: Schedule[];
   staff: Staff[];
+  role: AppRole;
 }) {
   const supabase = createClient();
   const [schedules, setSchedules] = useState(initialSchedules);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Schedule | null>(null);
   const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const canDelete = canDeleteEntries(role);
   const [calendarMonth, setCalendarMonth] = useState(startOfMonth(new Date()));
   const [selectedCalendarDate, setSelectedCalendarDate] = useState<string | null>(null);
 
@@ -121,6 +126,26 @@ export function SchedulesClient({
     if (data) setSchedules(data as Schedule[]);
     setShowForm(false);
     setEditing(null);
+  }
+
+  async function handleDelete(s: Schedule) {
+    if (!canDelete) return;
+    if (
+      !window.confirm(
+        `Delete schedule for ${s.customer_name} on ${s.scheduled_date}? This cannot be undone.`
+      )
+    ) {
+      return;
+    }
+    setDeletingId(s.id);
+    const { error: deleteError } = await supabase.from("schedules").delete().eq("id", s.id);
+    setDeletingId(null);
+    if (deleteError) {
+      window.alert(deleteError.message);
+      return;
+    }
+    if (editing?.id === s.id) setEditing(null);
+    await refresh();
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -466,12 +491,25 @@ export function SchedulesClient({
                   </td>
                   <td className="px-4 py-3">{shiftLabel[s.service_type]}</td>
                   <td className="px-4 py-3">
-                    <button
-                      onClick={() => openEdit(s)}
-                      className="text-brand-blue hover:text-brand-blue/70"
-                    >
-                      <Pencil className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        onClick={() => openEdit(s)}
+                        className="text-brand-blue hover:text-brand-blue/70"
+                        aria-label="Edit schedule"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      {canDelete && (
+                        <button
+                          onClick={() => handleDelete(s)}
+                          disabled={deletingId === s.id}
+                          className="text-red-600 hover:text-red-500 disabled:opacity-50"
+                          aria-label="Delete schedule"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))

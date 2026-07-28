@@ -11,6 +11,16 @@ export default async function TransactionsPage() {
   } = await supabase.auth.getUser();
   const role = getUserRole(user);
   const assignedBranchId = getAssignedBranchId(user);
+  const staffNeedsBranch = role === "staff" && !assignedBranchId;
+
+  if (staffNeedsBranch) {
+    return (
+      <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+        Your staff account has no assigned branch. Ask an admin to assign one on the Users page
+        before you can view or create transactions.
+      </div>
+    );
+  }
 
   const txQuery = supabase
     .from("transactions")
@@ -35,6 +45,7 @@ export default async function TransactionsPage() {
       branches={scopedBranches}
       initialTransactions={(transactions as Transaction[]) ?? []}
       lockedBranchId={role === "staff" ? assignedBranchId : null}
+      role={role}
     />
   );
 }
