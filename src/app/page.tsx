@@ -2,7 +2,6 @@ import {
   Clock,
   MapPin,
   Phone,
-  Truck,
   Sparkles,
   Wind,
   Shirt,
@@ -34,7 +33,6 @@ const SERVICES = [
   { icon: Shirt, title: "Wash", desc: "Gentle, thorough cleaning for all fabrics" },
   { icon: Wind, title: "Dry", desc: "Fast, efficient drying with care" },
   { icon: Sparkles, title: "Fold", desc: "Neatly folded and ready to wear" },
-  { icon: Truck, title: "Pick-up & Delivery", desc: "We come to you — hassle-free" },
 ];
 
 export default async function HomePage() {
@@ -101,10 +99,10 @@ export default async function HomePage() {
             Our Services
           </h2>
           <p className="text-center text-brand-text/60 mb-12 max-w-lg mx-auto">
-            Professional laundry care with pick-up and delivery across all three branches.
+            Professional laundry care across all three branches.
           </p>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 max-w-4xl mx-auto">
             {SERVICES.map(({ icon: Icon, title, desc }) => (
               <div
                 key={title}
@@ -158,7 +156,7 @@ export default async function HomePage() {
         <div className="max-w-3xl mx-auto text-center">
           <h2 className="text-3xl font-bold mb-4">Ready for Fresh, Clean Laundry?</h2>
           <p className="text-white/80 mb-8">
-            Visit any of our branches or call us for pick-up and delivery services.
+            Visit any of our branches or call us to get started.
           </p>
           <Button
             href={`tel:${BUSINESS.phone.replace(/\s/g, "")}`}

@@ -8,14 +8,11 @@ import { StatCard } from "@/components/ui/StatCard";
 import { Select } from "@/components/ui/Select";
 import type { Branch } from "@/lib/types";
 import { isAdminLike, type AppRole } from "@/lib/auth/roles";
-
-type DashboardStats = {
-  totalCash: number;
-  totalUnpaid: number;
-  totalSales: number;
-  pendingSchedules: number;
-  lowStockCount: number;
-};
+import { formatCurrency } from "@/lib/utils";
+import {
+  fetchDashboardStats,
+  type DashboardStats,
+} from "@/lib/dashboard-stats";
 
 const QUICK_LINKS = [
   { href: "/admin/reports", label: "New Daily Report", icon: FileText },
@@ -59,47 +56,9 @@ export function DashboardClient({
   async function handleBranchChange(branchId: string) {
     setSelectedBranch(branchId);
     setLoading(true);
-
-    const reportsQuery = supabase
-      .from("daily_reports")
-      .select("total_cash, unpaid, total_sales")
-      .eq("report_date", today);
-    const txQuery = supabase
-      .from("transactions")
-      .select("amount")
-      .eq("payment_status", "unpaid");
-    const schedulesQuery = supabase
-      .from("schedules")
-      .select("id")
-      .eq("status", "pending")
-      .gte("scheduled_date", today);
-    const inventoryQuery = supabase.from("inventory").select("id, quantity, low_stock_threshold");
-
     const filteredBranchId = branchId === "all" ? null : branchId;
-    if (filteredBranchId) {
-      reportsQuery.eq("branch_id", filteredBranchId);
-      txQuery.eq("branch_id", filteredBranchId);
-      schedulesQuery.eq("branch_id", filteredBranchId);
-      inventoryQuery.eq("branch_id", filteredBranchId);
-    }
-
-    const [{ data: reports }, { data: unpaidTx }, { data: pendingSchedules }, { data: lowStock }] =
-      await Promise.all([reportsQuery, txQuery, schedulesQuery, inventoryQuery]);
-
-    const totalCash = reports?.reduce((s, r) => s + r.total_cash, 0) ?? 0;
-    const reportUnpaid = reports?.reduce((s, r) => s + r.unpaid, 0) ?? 0;
-    const txUnpaid = unpaidTx?.reduce((s, t) => s + t.amount, 0) ?? 0;
-    const totalUnpaid = (reports?.length ?? 0) > 0 ? reportUnpaid : txUnpaid;
-    const totalSales = reports?.reduce((s, r) => s + r.total_sales, 0) ?? 0;
-    const lowStockCount = lowStock?.filter((i) => i.quantity <= i.low_stock_threshold).length ?? 0;
-
-    setStats({
-      totalCash,
-      totalUnpaid,
-      totalSales,
-      pendingSchedules: pendingSchedules?.length ?? 0,
-      lowStockCount,
-    });
+    const next = await fetchDashboardStats(supabase, today, filteredBranchId);
+    setStats(next);
     setLoading(false);
   }
 
@@ -127,15 +86,29 @@ export function DashboardClient({
 
       {role === "staff" ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-          <StatCard label="Cash Received Today" value={stats.totalCash} />
+          <StatCard label="Cash Received Today" value={stats.cashReceived} />
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <StatCard label="Total Cash Received" value={stats.totalCash} />
-          <StatCard label="Unpaid" value={stats.totalUnpaid} variant="warning" />
-          <StatCard label="Total Sales" value={stats.totalSales} variant="success" />
-          <StatCard label="Pending Schedules" value={stats.pendingSchedules} isCurrency={false} />
+          <StatCard label="Cash Received Today" value={stats.cashReceived} />
+          <StatCard label="Unpaid Today" value={stats.unpaid} variant="warning" />
+          <StatCard label="Total Sales Today" value={stats.totalSales} variant="success" />
+          <StatCard
+            label="Upcoming Schedules"
+            value={stats.upcomingSchedules}
+            isCurrency={false}
+          />
         </div>
+      )}
+
+      {isAdminLike(role) && stats.cashOnHand > 0 && (
+        <p className="mb-4 text-sm text-brand-text/60">
+          Cash on hand from today&apos;s daily report(s):{" "}
+          <span className="font-medium text-brand-text">
+            {formatCurrency(stats.cashOnHand)}
+          </span>
+          {" "}(physical count — may differ from cash received)
+        </p>
       )}
 
       {isAdminLike(role) && stats.lowStockCount > 0 && (

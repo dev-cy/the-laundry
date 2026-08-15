@@ -43,10 +43,54 @@ export async function GET() {
       users,
       branches: branches ?? [],
       currentUserRole: getUserRole(user),
+      currentUserId: user.id,
     });
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Failed to fetch users." },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(request: Request) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const actorRole = user ? getUserRole(user) : null;
+  if (!user || actorRole !== "super_admin") return unauthorized();
+
+  const body = (await request.json()) as { userId?: string };
+  const userId = body.userId ?? "";
+  if (!userId) {
+    return NextResponse.json({ error: "Invalid payload." }, { status: 400 });
+  }
+
+  if (userId === user.id) {
+    return NextResponse.json(
+      { error: "You cannot delete your own account." },
+      { status: 400 }
+    );
+  }
+
+  try {
+    const admin = createAdminClient();
+    const { data: found, error: fetchError } = await admin.auth.admin.getUserById(userId);
+    if (fetchError || !found?.user) {
+      return NextResponse.json({ error: fetchError?.message ?? "User not found." }, { status: 404 });
+    }
+
+    const { error: deleteError } = await admin.auth.admin.deleteUser(userId);
+    if (deleteError) {
+      return NextResponse.json({ error: deleteError.message }, { status: 400 });
+    }
+
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : "Failed to delete user." },
       { status: 500 }
     );
   }

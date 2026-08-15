@@ -41,3 +41,17 @@ export function todayISO(): string {
   const day = String(now.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
+
+/** Unique named customers + one count per unnamed transaction. */
+export function countCustomersFromTransactions(
+  txs: { customer_name?: string | null }[] | null | undefined
+): number {
+  const named = new Set<string>();
+  let unnamed = 0;
+  for (const tx of txs ?? []) {
+    const name = tx.customer_name?.trim();
+    if (!name) unnamed += 1;
+    else named.add(name.toLowerCase());
+  }
+  return named.size + unnamed;
+}

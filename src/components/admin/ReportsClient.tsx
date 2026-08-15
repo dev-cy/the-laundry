@@ -3,13 +3,13 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { DENOMINATIONS } from "@/lib/constants";
-import { calcTotalCash, formatCurrency, todayISO } from "@/lib/utils";
+import { calcTotalCash, countCustomersFromTransactions, formatCurrency, todayISO } from "@/lib/utils";
 import type { Branch, DailyReport, CashQuantities } from "@/lib/types";
 import { canDeleteEntries, isAdminLike, type AppRole } from "@/lib/auth/roles";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Pencil, Plus, Trash2, X } from "lucide-react";
 
 const emptyQty = (): CashQuantities => ({
   qty_1: 0,
@@ -62,6 +62,7 @@ export function ReportForm({
   const [unpaid, setUnpaid] = useState(existing?.unpaid ?? 0);
   const [totalSales, setTotalSales] = useState(existing?.total_sales ?? 0);
   const [cashReceived, setCashReceived] = useState((existing?.total_sales ?? 0) - (existing?.unpaid ?? 0));
+  const [customerCount, setCustomerCount] = useState(0);
   const [notes, setNotes] = useState(existing?.notes ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -82,7 +83,7 @@ export function ReportForm({
           .limit(1),
         supabase
           .from("transactions")
-          .select("amount, payment_status")
+          .select("amount, payment_status, customer_name")
           .eq("branch_id", branchId)
           .eq("transaction_date", reportDate),
       ]);
@@ -104,6 +105,7 @@ export function ReportForm({
       setTotalSales(total);
       setUnpaid(unpaidFromTx);
       setCashReceived(total - unpaidFromTx);
+      setCustomerCount(countCustomersFromTransactions(txData));
     }
 
     fetchDerivedTotals();
@@ -234,9 +236,14 @@ export function ReportForm({
         </div>
       </div>
 
-      {isAdminLike(role) && (
+      {isAdminLike(role) ? (
         <div className="rounded-xl bg-brand-light/10 border border-brand-blue/10 overflow-x-auto">
-          <div className="min-w-[640px] grid grid-cols-4 gap-4 p-4">
+          <div className="min-w-[760px] grid grid-cols-5 gap-4 p-4">
+            <div className="flex flex-col gap-1">
+              <span className="text-sm font-medium text-brand-text">Total Customers</span>
+              <span className="text-lg font-semibold text-brand-text">{customerCount}</span>
+              <span className="text-xs text-brand-text/50">From transactions that day</span>
+            </div>
             <div className="flex flex-col gap-1">
               <span className="text-sm font-medium text-brand-text">Unpaid Previous</span>
               <span className="text-lg font-semibold text-brand-text">
@@ -269,6 +276,12 @@ export function ReportForm({
             </div>
           </div>
         </div>
+      ) : (
+        <div className="rounded-xl bg-brand-light/10 border border-brand-blue/10 px-4 py-3">
+          <span className="text-sm font-medium text-brand-text">Total Customers</span>
+          <p className="text-lg font-semibold text-brand-text">{customerCount}</p>
+          <p className="text-xs text-brand-text/50">From transactions that day</p>
+        </div>
       )}
 
       <Input
@@ -300,23 +313,82 @@ export function ReportsPageClient({
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<DailyReport | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [customerCounts, setCustomerCounts] = useState<Record<string, number>>({});
+  const [branchFilter, setBranchFilter] = useState("all");
+  const [dateFilter, setDateFilter] = useState("");
+  const [loadingList, setLoadingList] = useState(false);
   const canDelete = canDeleteEntries(role);
+  const canFilter = isAdminLike(role);
 
-  async function refresh() {
+  async function loadCustomerCounts(reportRows: DailyReport[], branchScope?: string | null) {
+    if (reportRows.length === 0) {
+      setCustomerCounts({});
+      return;
+    }
+    const supabase = createClient();
+    const dates = Array.from(new Set(reportRows.map((r) => r.report_date)));
+    let txQuery = supabase
+      .from("transactions")
+      .select("branch_id, transaction_date, customer_name")
+      .in("transaction_date", dates);
+    if (branchScope) txQuery = txQuery.eq("branch_id", branchScope);
+
+    const { data: txs } = await txQuery;
+    const grouped = new Map<string, { customer_name?: string | null }[]>();
+    for (const tx of txs ?? []) {
+      const key = `${tx.branch_id}|${tx.transaction_date}`;
+      const list = grouped.get(key) ?? [];
+      list.push(tx);
+      grouped.set(key, list);
+    }
+    const next: Record<string, number> = {};
+    for (const report of reportRows) {
+      const key = `${report.branch_id}|${report.report_date}`;
+      next[key] = countCustomersFromTransactions(grouped.get(key) ?? []);
+    }
+    setCustomerCounts(next);
+  }
+
+  async function loadReports(
+    nextBranch = branchFilter,
+    nextDate = dateFilter,
+    closeFormView = true
+  ) {
+    setLoadingList(true);
     const supabase = createClient();
     let query = supabase
       .from("daily_reports")
       .select("*, branches(name)")
-      .order("report_date", { ascending: false })
-      .limit(50);
-    if (lockedBranchId) query = query.eq("branch_id", lockedBranchId);
+      .order("report_date", { ascending: false });
+
+    const branchScope = lockedBranchId ?? (canFilter && nextBranch !== "all" ? nextBranch : null);
+    if (branchScope) query = query.eq("branch_id", branchScope);
+    if (canFilter && nextDate) query = query.eq("report_date", nextDate);
+    else query = query.limit(50);
 
     const { data: reportsData } = await query;
 
-    if (reportsData) setReports(reportsData as DailyReport[]);
-    setShowForm(false);
-    setEditing(null);
+    if (reportsData) {
+      const rows = reportsData as DailyReport[];
+      setReports(rows);
+      await loadCustomerCounts(rows, branchScope);
+    }
+    if (closeFormView) {
+      setShowForm(false);
+      setEditing(null);
+    }
+    setLoadingList(false);
   }
+
+  async function refresh() {
+    await loadReports(branchFilter, dateFilter, true);
+  }
+
+  useEffect(() => {
+    const branchScope = lockedBranchId ?? null;
+    loadCustomerCounts(initialReports, branchScope);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function handleDelete(report: DailyReport) {
     if (!canDelete) return;
@@ -335,26 +407,74 @@ export function ReportsPageClient({
     await refresh();
   }
 
+  const formOpen = showForm || Boolean(editing);
+
+  function closeForm() {
+    setShowForm(false);
+    setEditing(null);
+  }
+
   return (
     <div>
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-8">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between mb-8">
         <div>
           <h1 className="text-2xl font-bold text-brand-text">Daily Reports</h1>
           <p className="text-brand-text/60">Cash reconciliation by branch</p>
         </div>
-        <Button
-          onClick={() => {
-            setEditing(null);
-            setShowForm(!showForm);
-          }}
-        >
-          <Plus className="w-4 h-4" />
-          New Report
-        </Button>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-end">
+          {canFilter && !formOpen && (
+            <>
+              <div className="w-full sm:w-52">
+                <Select
+                  label="Branch"
+                  value={branchFilter}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setBranchFilter(value);
+                    void loadReports(value, dateFilter, false);
+                  }}
+                  options={[
+                    { value: "all", label: "All Branches" },
+                    ...branches.map((b) => ({ value: b.id, label: b.name })),
+                  ]}
+                />
+              </div>
+              <div className="w-full sm:w-44">
+                <Input
+                  label="Date"
+                  type="date"
+                  value={dateFilter}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setDateFilter(value);
+                    void loadReports(branchFilter, value, false);
+                  }}
+                />
+              </div>
+            </>
+          )}
+          {formOpen ? (
+            <Button type="button" variant="secondary" onClick={closeForm}>
+              <X className="w-4 h-4" />
+              Close
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              onClick={() => {
+                setEditing(null);
+                setShowForm(true);
+              }}
+            >
+              <Plus className="w-4 h-4" />
+              New Report
+            </Button>
+          )}
+        </div>
       </div>
 
-      {(showForm || editing) && (
-        <div className="mb-8 rounded-xl border border-brand-blue/10 bg-white p-4 sm:p-6 shadow-sm min-w-0">
+      {formOpen ? (
+        <div className="rounded-xl border border-brand-blue/10 bg-white p-4 sm:p-6 shadow-sm min-w-0">
           <h2 className="text-lg font-semibold mb-4">
             {editing ? "Edit Report" : "New Daily Report"}
           </h2>
@@ -366,8 +486,7 @@ export function ReportsPageClient({
             onSaved={refresh}
           />
         </div>
-      )}
-
+      ) : (
       <div className="rounded-xl border border-brand-blue/10 bg-white overflow-x-auto">
         <table className="w-full min-w-[720px] text-sm">
           <thead className="bg-brand-light/30">
@@ -375,6 +494,7 @@ export function ReportsPageClient({
               <th className="text-left px-4 py-3 font-semibold">Date</th>
               <th className="text-left px-4 py-3 font-semibold">Branch</th>
               <th className="text-left px-4 py-3 font-semibold">Staff</th>
+              <th className="text-right px-4 py-3 font-semibold">Customers</th>
               <th className="text-right px-4 py-3 font-semibold">Total Cash</th>
               <th className="text-right px-4 py-3 font-semibold">Unpaid</th>
               <th className="text-right px-4 py-3 font-semibold">Sales</th>
@@ -384,8 +504,12 @@ export function ReportsPageClient({
           <tbody>
             {reports.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-brand-text/50">
-                  No reports yet. Create your first daily report.
+                <td colSpan={8} className="px-4 py-8 text-center text-brand-text/50">
+                  {loadingList
+                    ? "Loading reports…"
+                    : dateFilter || branchFilter !== "all"
+                      ? "No reports match these filters."
+                      : "No reports yet. Create your first daily report."}
                 </td>
               </tr>
             ) : (
@@ -396,6 +520,9 @@ export function ReportsPageClient({
                     {(r.branches as { name: string } | undefined)?.name ?? "—"}
                   </td>
                   <td className="px-4 py-3">{r.staff_names}</td>
+                  <td className="px-4 py-3 text-right tabular-nums">
+                    {customerCounts[`${r.branch_id}|${r.report_date}`] ?? "—"}
+                  </td>
                   <td className="px-4 py-3 text-right font-medium">
                     {formatCurrency(r.total_cash)}
                   </td>
@@ -435,6 +562,7 @@ export function ReportsPageClient({
           </tbody>
         </table>
       </div>
+      )}
     </div>
   );
 }

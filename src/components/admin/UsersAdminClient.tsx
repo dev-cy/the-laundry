@@ -5,6 +5,7 @@ import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
 import type { AppRole } from "@/lib/auth/roles";
 import { roleLabel } from "@/lib/auth/roles";
+import { Trash2 } from "lucide-react";
 
 type ListedUser = {
   id: string;
@@ -29,13 +30,16 @@ export function UsersAdminClient() {
   const [users, setUsers] = useState<ListedUser[]>([]);
   const [branches, setBranches] = useState<BranchOption[]>([]);
   const [currentUserRole, setCurrentUserRole] = useState<AppRole>("admin");
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [roleDrafts, setRoleDrafts] = useState<Record<string, AppRole>>({});
   const [branchDrafts, setBranchDrafts] = useState<Record<string, string>>({});
   const [savingUserId, setSavingUserId] = useState<string | null>(null);
+  const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
 
   const canAssignSuperAdmin = currentUserRole === "super_admin";
+  const canDeleteUsers = currentUserRole === "super_admin";
 
   async function fetchUsers() {
     setLoading(true);
@@ -45,6 +49,7 @@ export function UsersAdminClient() {
       users?: ListedUser[];
       branches?: BranchOption[];
       currentUserRole?: AppRole;
+      currentUserId?: string;
       error?: string;
     };
     if (!res.ok) {
@@ -57,6 +62,7 @@ export function UsersAdminClient() {
     setUsers(list);
     setBranches(branchList);
     setCurrentUserRole(data.currentUserRole ?? "admin");
+    setCurrentUserId(data.currentUserId ?? null);
     setRoleDrafts(Object.fromEntries(list.map((u) => [u.id, u.role])));
     setBranchDrafts(Object.fromEntries(list.map((u) => [u.id, u.branch_id ?? ""])));
     setLoading(false);
@@ -85,6 +91,38 @@ export function UsersAdminClient() {
     setSavingUserId(null);
     if (!res.ok) {
       setError(data.error ?? "Failed to update role.");
+      return;
+    }
+    await fetchUsers();
+  }
+
+  async function deleteUser(u: ListedUser) {
+    if (!canDeleteUsers) return;
+    if (u.id === currentUserId) {
+      setError("You cannot delete your own account.");
+      return;
+    }
+
+    const roleText = roleLabel(u.role);
+    if (
+      !window.confirm(
+        `Delete user ${u.email} (${roleText})? This permanently removes their login and cannot be undone.`
+      )
+    ) {
+      return;
+    }
+
+    setDeletingUserId(u.id);
+    setError(null);
+    const res = await fetch("/api/admin/users", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: u.id }),
+    });
+    const data = (await res.json()) as { error?: string };
+    setDeletingUserId(null);
+    if (!res.ok) {
+      setError(data.error ?? "Failed to delete user.");
       return;
     }
     await fetchUsers();
@@ -119,7 +157,7 @@ export function UsersAdminClient() {
       {!canAssignSuperAdmin && (
         <p className="mb-4 text-sm text-brand-text/60">
           You are signed in as {roleLabel(currentUserRole)}. Only a Super Admin can assign the Super
-          Admin role.
+          Admin role or delete users.
         </p>
       )}
       <div className="rounded-xl border border-brand-blue/10 bg-white overflow-x-auto">
@@ -127,7 +165,9 @@ export function UsersAdminClient() {
           <thead className="bg-brand-light/30">
             <tr>
               <th className="text-left px-4 py-3 font-semibold">Email</th>
-              <th className="text-left px-4 py-3 font-semibold">Account Created</th>
+              <th className="text-left px-4 py-3 font-semibold whitespace-nowrap min-w-[10rem]">
+                Account Created
+              </th>
               <th className="text-left px-4 py-3 font-semibold">Role</th>
               <th className="text-left px-4 py-3 font-semibold">Assigned Branch (Staff)</th>
               <th className="px-4 py-3" />
@@ -144,10 +184,16 @@ export function UsersAdminClient() {
               users.map((u) => {
                 const locked =
                   u.role === "super_admin" && currentUserRole !== "super_admin";
+                const isSelf = u.id === currentUserId;
                 return (
                   <tr key={u.id} className="border-t border-brand-blue/5">
-                    <td className="px-4 py-3">{u.email}</td>
-                    <td className="px-4 py-3">{formatCreatedDate(u.created_at)}</td>
+                    <td className="px-4 py-3">
+                      {u.email}
+                      {isSelf && (
+                        <span className="ml-2 text-xs text-brand-text/40">(you)</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">{formatCreatedDate(u.created_at)}</td>
                     <td className="px-4 py-3 w-52">
                       <Select
                         label=""
@@ -182,15 +228,30 @@ export function UsersAdminClient() {
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-3 w-28">
-                      <Button
-                        type="button"
-                        size="sm"
-                        disabled={locked || savingUserId === u.id}
-                        onClick={() => saveRole(u.id)}
-                      >
-                        {savingUserId === u.id ? "Saving..." : "Save"}
-                      </Button>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          disabled={locked || savingUserId === u.id || deletingUserId === u.id}
+                          onClick={() => saveRole(u.id)}
+                        >
+                          {savingUserId === u.id ? "Saving..." : "Save"}
+                        </Button>
+                        {canDeleteUsers && !isSelf && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="danger"
+                            disabled={deletingUserId === u.id || savingUserId === u.id}
+                            onClick={() => deleteUser(u)}
+                            aria-label={`Delete ${u.email}`}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                            {deletingUserId === u.id ? "Deleting..." : "Delete"}
+                          </Button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
