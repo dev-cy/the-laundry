@@ -9,6 +9,12 @@ import { cn } from "@/lib/cn";
 const SCROLL_THRESHOLD = 8;
 const TOP_OFFSET = 16;
 
+const NAV_ITEMS = [
+  { label: "Services", href: "/#services" },
+  { label: "Branches", href: "/#branches" },
+  { label: "Contact", href: "/#contact" },
+] as const;
+
 type SiteHeaderProps = {
   className?: string;
   /** On homepage: transparent at scroll top so the bar feels part of the hero. */
@@ -65,11 +71,29 @@ export function SiteHeader({ className, heroBlend = false }: SiteHeaderProps) {
         className
       )}
     >
-      <nav className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-        <Link href="/" aria-label="The Laundry home">
-          <Logo size="sm" showTagline={false} />
-        </Link>
-        <SiteHeaderActions />
+      <nav className="mx-auto flex max-w-6xl items-center px-6 py-4">
+        <div className="flex flex-1 items-center">
+          <Link href="/" aria-label="The Laundry home">
+            <Logo size="sm" showTagline={false} />
+          </Link>
+        </div>
+
+        <ul className="hidden items-center gap-8 md:flex">
+          {NAV_ITEMS.map(({ label, href }) => (
+            <li key={href}>
+              <a
+                href={href}
+                className="text-sm font-medium text-brand-text/70 transition-colors hover:text-brand-blue"
+              >
+                {label}
+              </a>
+            </li>
+          ))}
+        </ul>
+
+        <div className="flex flex-1 justify-end">
+          <SiteHeaderActions />
+        </div>
       </nav>
     </header>
   );

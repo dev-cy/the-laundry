@@ -109,7 +109,7 @@ export default async function HomePage() {
       </header>
 
       {/* Services */}
-      <section className="py-20 px-6 bg-white">
+      <section id="services" className="scroll-mt-24 py-20 px-6 bg-white">
         <div className="max-w-6xl mx-auto">
           <h2 className="text-3xl font-bold text-center text-brand-text mb-4">
             Our Services
@@ -136,7 +136,7 @@ export default async function HomePage() {
       </section>
 
       {/* Branches */}
-      <section id="branches" className="bg-brand-light/10 pt-20">
+      <section id="branches" className="scroll-mt-24 bg-brand-light/10 pt-20">
         <div className="mx-auto max-w-6xl px-6">
           <h2 className="text-3xl font-bold text-center text-brand-text mb-4">
             Our Branches
@@ -186,7 +186,7 @@ export default async function HomePage() {
       </section>
 
       {/* CTA */}
-      <section className="py-20 px-6 bg-brand-blue text-white">
+      <section id="contact" className="scroll-mt-24 py-20 px-6 bg-brand-blue text-white">
         <div className="max-w-3xl mx-auto text-center">
           <h2 className="text-3xl font-bold mb-4">
             Ready for Fresh, Clean Laundry?
