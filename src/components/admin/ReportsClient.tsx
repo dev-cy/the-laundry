@@ -1,17 +1,28 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { DENOMINATIONS } from "@/lib/constants";
 import { calcTotalCash, countCustomersFromTransactions, formatCurrency, todayISO } from "@/lib/utils";
-import type { Branch, DailyReport, CashQuantities } from "@/lib/types";
+import type { Branch, DailyReport, CashQuantities, Staff } from "@/lib/types";
 import { canDeleteEntries, isAdminLike, type AppRole } from "@/lib/auth/roles";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { Pencil, Plus, Trash2, X } from "lucide-react";
+import { ChevronDown, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useLoadMore } from "@/lib/use-load-more";
 import { LoadMoreFooter } from "@/components/ui/LoadMoreFooter";
+
+function parseStaffNames(value: string): string[] {
+  return value
+    .split(/\s*(?:,|&| and )\s*/i)
+    .map((name) => name.trim())
+    .filter(Boolean);
+}
+
+function joinStaffNames(names: string[]): string {
+  return names.join(" and ");
+}
 
 const emptyQty = (): CashQuantities => ({
   qty_1: 0,
@@ -27,12 +38,14 @@ const emptyQty = (): CashQuantities => ({
 
 export function ReportForm({
   branches,
+  staff,
   existing,
   role,
   lockedBranchId,
   onSaved,
 }: {
   branches: Branch[];
+  staff: Staff[];
   existing?: DailyReport | null;
   role: AppRole;
   lockedBranchId?: string | null;
@@ -43,7 +56,11 @@ export function ReportForm({
     lockedBranchId ?? existing?.branch_id ?? branches[0]?.id ?? ""
   );
   const [reportDate, setReportDate] = useState(existing?.report_date ?? todayISO());
-  const [staffNames, setStaffNames] = useState(existing?.staff_names ?? "");
+  const [selectedStaffNames, setSelectedStaffNames] = useState<string[]>(
+    parseStaffNames(existing?.staff_names ?? "")
+  );
+  const [staffMenuOpen, setStaffMenuOpen] = useState(false);
+  const staffMenuRef = useRef<HTMLDivElement>(null);
   const [quantities, setQuantities] = useState<CashQuantities>(
     existing
       ? {
@@ -70,6 +87,44 @@ export function ReportForm({
   const [error, setError] = useState<string | null>(null);
 
   const totalCash = calcTotalCash(quantities);
+  const staffNames = joinStaffNames(selectedStaffNames);
+
+  const branchStaff = useMemo(
+    () => staff.filter((member) => member.branch_id === branchId).sort((a, b) => a.name.localeCompare(b.name)),
+    [staff, branchId]
+  );
+
+  const extraSavedNames = useMemo(() => {
+    const known = new Set(branchStaff.map((member) => member.name));
+    return selectedStaffNames.filter((name) => !known.has(name));
+  }, [branchStaff, selectedStaffNames]);
+
+  function handleBranchChange(nextBranchId: string) {
+    setBranchId(nextBranchId);
+    const namesOnNextBranch = new Set(
+      staff.filter((member) => member.branch_id === nextBranchId).map((member) => member.name)
+    );
+    setSelectedStaffNames((current) => current.filter((name) => namesOnNextBranch.has(name)));
+  }
+
+  function toggleStaffName(name: string) {
+    setSelectedStaffNames((current) =>
+      current.includes(name) ? current.filter((n) => n !== name) : [...current, name]
+    );
+  }
+
+  useEffect(() => {
+    if (!staffMenuOpen) return;
+
+    function handlePointerDown(event: MouseEvent) {
+      if (!staffMenuRef.current?.contains(event.target as Node)) {
+        setStaffMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [staffMenuOpen]);
 
   useEffect(() => {
     if (!branchId || !reportDate) return;
@@ -120,6 +175,10 @@ export function ReportForm({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (selectedStaffNames.length === 0) {
+      setError("Select at least one staff member assigned to this branch.");
+      return;
+    }
     setSaving(true);
     setError(null);
 
@@ -170,7 +229,7 @@ export function ReportForm({
         <Select
           label="Branch"
           value={branchId}
-          onChange={(e) => setBranchId(e.target.value)}
+          onChange={(e) => handleBranchChange(e.target.value)}
           options={branches.map((b) => ({ value: b.id, label: b.name }))}
           disabled={Boolean(lockedBranchId)}
           required
@@ -182,13 +241,69 @@ export function ReportForm({
           onChange={(e) => setReportDate(e.target.value)}
           required
         />
-        <Input
-          label="Staff Name(s)"
-          value={staffNames}
-          onChange={(e) => setStaffNames(e.target.value)}
-          placeholder="Mel and Jane"
-          required
-        />
+        <div className="flex flex-col gap-1" ref={staffMenuRef}>
+          <span className="text-sm font-medium text-brand-text">Staff Name(s)</span>
+          {branchStaff.length === 0 && extraSavedNames.length === 0 ? (
+            <p className="h-10 rounded-lg border border-brand-blue/20 bg-white px-4 py-2 text-sm leading-6 text-brand-text/50">
+              No staff assigned to this branch
+            </p>
+          ) : (
+            <div className="relative">
+              <button
+                type="button"
+                className="h-10 w-full appearance-none rounded-lg border border-brand-blue/20 bg-white pl-4 pr-10 text-left text-sm text-brand-text focus:outline-none focus:ring-2 focus:ring-brand-blue/40"
+                onClick={() => setStaffMenuOpen((open) => !open)}
+                aria-haspopup="listbox"
+                aria-expanded={staffMenuOpen}
+              >
+                <span className={staffNames ? "text-brand-text" : "text-brand-text/40"}>
+                  {staffNames || "Select staff"}
+                </span>
+              </button>
+              <ChevronDown
+                className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-brand-text/70"
+                aria-hidden="true"
+              />
+              {staffMenuOpen && (
+                <div
+                  className="absolute z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-brand-blue/20 bg-white py-1 shadow-lg"
+                  role="listbox"
+                  aria-multiselectable="true"
+                >
+                  {branchStaff.map((member) => (
+                    <label
+                      key={member.id}
+                      className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm text-brand-text hover:bg-brand-light/30"
+                    >
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-brand-blue/30 text-brand-blue focus:ring-brand-blue/40"
+                        checked={selectedStaffNames.includes(member.name)}
+                        onChange={() => toggleStaffName(member.name)}
+                      />
+                      {member.name}
+                    </label>
+                  ))}
+                  {extraSavedNames.map((name) => (
+                    <label
+                      key={name}
+                      className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm text-brand-text hover:bg-brand-light/30"
+                    >
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-brand-blue/30 text-brand-blue focus:ring-brand-blue/40"
+                        checked={selectedStaffNames.includes(name)}
+                        onChange={() => toggleStaffName(name)}
+                      />
+                      {name}
+                      <span className="text-xs text-brand-text/45">(saved)</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Cash on hand — physical count in the register */}
@@ -302,11 +417,13 @@ export function ReportForm({
 
 export function ReportsPageClient({
   branches,
+  initialStaff,
   initialReports,
   role,
   lockedBranchId,
 }: {
   branches: Branch[];
+  initialStaff: Staff[];
   initialReports: DailyReport[];
   role: AppRole;
   lockedBranchId?: string | null;
@@ -489,7 +606,9 @@ export function ReportsPageClient({
             {editing ? "Edit Report" : "New Daily Report"}
           </h2>
           <ReportForm
+            key={editing?.id ?? "new"}
             branches={branches}
+            staff={initialStaff}
             existing={editing}
             role={role}
             lockedBranchId={lockedBranchId}

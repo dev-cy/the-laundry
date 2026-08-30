@@ -155,6 +155,20 @@ CREATE TABLE IF NOT EXISTS cash_releases (
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS expenses (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+  amount INT NOT NULL CHECK (amount > 0),
+  expense_date DATE NOT NULL DEFAULT CURRENT_DATE,
+  description TEXT,
+  notes TEXT,
+  created_by UUID REFERENCES auth.users(id),
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_expenses_branch_date ON expenses (branch_id, expense_date DESC);
+
 -- Inventory catalog (shared item definitions with system-generated SKU)
 CREATE SEQUENCE IF NOT EXISTS inventory_sku_seq START 1;
 
@@ -206,6 +220,7 @@ ALTER TABLE schedules ENABLE ROW LEVEL SECURITY;
 ALTER TABLE staff ENABLE ROW LEVEL SECURITY;
 ALTER TABLE staff_cash_advances ENABLE ROW LEVEL SECURITY;
 ALTER TABLE cash_releases ENABLE ROW LEVEL SECURITY;
+ALTER TABLE expenses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE inventory ENABLE ROW LEVEL SECURITY;
 ALTER TABLE inventory_catalog ENABLE ROW LEVEL SECURITY;
 
@@ -256,6 +271,10 @@ DROP POLICY IF EXISTS "Select schedules" ON schedules;
 DROP POLICY IF EXISTS "Insert schedules" ON schedules;
 DROP POLICY IF EXISTS "Update schedules" ON schedules;
 DROP POLICY IF EXISTS "Delete schedules" ON schedules;
+DROP POLICY IF EXISTS "Branch select schedules" ON schedules;
+DROP POLICY IF EXISTS "Branch update schedule attendance" ON schedules;
+DROP POLICY IF EXISTS "Select schedules for home-branch staff" ON schedules;
+DROP POLICY IF EXISTS "Update attendance for home-branch staff" ON schedules;
 DROP POLICY IF EXISTS "Auth users select staff" ON staff;
 DROP POLICY IF EXISTS "Auth users write staff" ON staff;
 DROP POLICY IF EXISTS "Auth users update staff" ON staff;
@@ -272,6 +291,14 @@ DROP POLICY IF EXISTS "Select cash_releases" ON cash_releases;
 DROP POLICY IF EXISTS "Insert cash_releases" ON cash_releases;
 DROP POLICY IF EXISTS "Update cash_releases" ON cash_releases;
 DROP POLICY IF EXISTS "Delete cash_releases" ON cash_releases;
+DROP POLICY IF EXISTS "Auth users select expenses" ON expenses;
+DROP POLICY IF EXISTS "Auth users write expenses" ON expenses;
+DROP POLICY IF EXISTS "Auth users update expenses" ON expenses;
+DROP POLICY IF EXISTS "Super admin delete expenses" ON expenses;
+DROP POLICY IF EXISTS "Select expenses" ON expenses;
+DROP POLICY IF EXISTS "Insert expenses" ON expenses;
+DROP POLICY IF EXISTS "Update expenses" ON expenses;
+DROP POLICY IF EXISTS "Delete expenses" ON expenses;
 DROP POLICY IF EXISTS "Auth users select inventory" ON inventory;
 DROP POLICY IF EXISTS "Auth users write inventory" ON inventory;
 DROP POLICY IF EXISTS "Auth users update inventory" ON inventory;
@@ -629,6 +656,38 @@ CREATE POLICY "Branch update schedule attendance" ON schedules
   WITH CHECK (
     auth.role() = 'authenticated' AND public.can_access_branch(branch_id)
   );
+CREATE POLICY "Select schedules for home-branch staff" ON schedules
+  FOR SELECT USING (
+    auth.role() = 'authenticated'
+    AND staff_id IS NOT NULL
+    AND EXISTS (
+      SELECT 1
+      FROM staff s
+      WHERE s.id = schedules.staff_id
+        AND public.can_access_branch(s.branch_id)
+    )
+  );
+CREATE POLICY "Update attendance for home-branch staff" ON schedules
+  FOR UPDATE USING (
+    auth.role() = 'authenticated'
+    AND staff_id IS NOT NULL
+    AND EXISTS (
+      SELECT 1
+      FROM staff s
+      WHERE s.id = schedules.staff_id
+        AND public.can_access_branch(s.branch_id)
+    )
+  )
+  WITH CHECK (
+    auth.role() = 'authenticated'
+    AND staff_id IS NOT NULL
+    AND EXISTS (
+      SELECT 1
+      FROM staff s
+      WHERE s.id = schedules.staff_id
+        AND public.can_access_branch(s.branch_id)
+    )
+  );
 CREATE POLICY "Delete schedules" ON schedules
   FOR DELETE USING (public.is_super_admin());
 
@@ -663,6 +722,15 @@ CREATE POLICY "Update cash_releases" ON cash_releases
 CREATE POLICY "Delete cash_releases" ON cash_releases
   FOR DELETE USING (public.is_super_admin());
 
+CREATE POLICY "Select expenses" ON expenses
+  FOR SELECT USING (public.is_admin_like());
+CREATE POLICY "Insert expenses" ON expenses
+  FOR INSERT WITH CHECK (public.is_admin_like());
+CREATE POLICY "Update expenses" ON expenses
+  FOR UPDATE USING (public.is_admin_like());
+CREATE POLICY "Delete expenses" ON expenses
+  FOR DELETE USING (public.is_super_admin());
+
 CREATE POLICY "Select inventory" ON inventory
   FOR SELECT USING (public.is_admin_like());
 CREATE POLICY "Insert inventory" ON inventory
@@ -681,6 +749,39 @@ CREATE POLICY "Update inventory_catalog" ON inventory_catalog
 CREATE POLICY "Delete inventory_catalog" ON inventory_catalog
   FOR DELETE USING (public.is_super_admin());
 
+-- Staff may only change attendance times; admins keep full schedule updates.
+CREATE OR REPLACE FUNCTION public.restrict_staff_schedule_updates()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+BEGIN
+  IF public.is_admin_like() THEN
+    RETURN NEW;
+  END IF;
+
+  IF NEW.branch_id IS DISTINCT FROM OLD.branch_id
+     OR NEW.staff_id IS DISTINCT FROM OLD.staff_id
+     OR NEW.customer_name IS DISTINCT FROM OLD.customer_name
+     OR NEW.customer_phone IS DISTINCT FROM OLD.customer_phone
+     OR NEW.service_type IS DISTINCT FROM OLD.service_type
+     OR NEW.scheduled_date IS DISTINCT FROM OLD.scheduled_date
+     OR NEW.scheduled_time IS DISTINCT FROM OLD.scheduled_time
+     OR NEW.scheduled_time_out IS DISTINCT FROM OLD.scheduled_time_out
+     OR NEW.status IS DISTINCT FROM OLD.status
+     OR NEW.notes IS DISTINCT FROM OLD.notes
+     OR NEW.created_by IS DISTINCT FROM OLD.created_by
+     OR NEW.overtime_minutes IS DISTINCT FROM OLD.overtime_minutes
+     OR NEW.undertime_minutes IS DISTINCT FROM OLD.undertime_minutes
+     OR NEW.daily_pay_override IS DISTINCT FROM OLD.daily_pay_override
+  THEN
+    RAISE EXCEPTION 'Staff may only update time in and time out';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
 -- Updated_at trigger
 CREATE OR REPLACE FUNCTION update_updated_at()
 RETURNS TRIGGER AS $$
@@ -692,20 +793,27 @@ $$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS daily_reports_updated_at ON daily_reports;
 DROP TRIGGER IF EXISTS transactions_updated_at ON transactions;
+DROP TRIGGER IF EXISTS schedules_staff_attendance_only ON schedules;
 DROP TRIGGER IF EXISTS schedules_updated_at ON schedules;
 DROP TRIGGER IF EXISTS staff_updated_at ON staff;
 DROP TRIGGER IF EXISTS staff_cash_advances_updated_at ON staff_cash_advances;
 DROP TRIGGER IF EXISTS cash_releases_updated_at ON cash_releases;
+DROP TRIGGER IF EXISTS expenses_updated_at ON expenses;
 DROP TRIGGER IF EXISTS inventory_updated_at ON inventory;
 DROP TRIGGER IF EXISTS inventory_catalog_updated_at ON inventory_catalog;
 DROP TRIGGER IF EXISTS sync_catalog_to_all_branches ON inventory_catalog;
 DROP TRIGGER IF EXISTS sync_inventory_for_new_branch ON branches;
 CREATE TRIGGER daily_reports_updated_at BEFORE UPDATE ON daily_reports FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER transactions_updated_at BEFORE UPDATE ON transactions FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER schedules_staff_attendance_only
+  BEFORE UPDATE ON schedules
+  FOR EACH ROW
+  EXECUTE FUNCTION public.restrict_staff_schedule_updates();
 CREATE TRIGGER schedules_updated_at BEFORE UPDATE ON schedules FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER staff_updated_at BEFORE UPDATE ON staff FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER staff_cash_advances_updated_at BEFORE UPDATE ON staff_cash_advances FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER cash_releases_updated_at BEFORE UPDATE ON cash_releases FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER expenses_updated_at BEFORE UPDATE ON expenses FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER inventory_updated_at BEFORE UPDATE ON inventory FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER inventory_catalog_updated_at BEFORE UPDATE ON inventory_catalog FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER sync_catalog_to_all_branches

@@ -5,7 +5,6 @@ import { createClient } from "@/lib/supabase/client";
 import { StatCard } from "@/components/ui/StatCard";
 import { Select } from "@/components/ui/Select";
 import { Input } from "@/components/ui/Input";
-import { Button } from "@/components/ui/Button";
 import { PayrollDetailsModal } from "@/components/admin/PayrollDetailsModal";
 import type { Branch, Schedule, Staff, StaffCashAdvance } from "@/lib/types";
 import { isAdminLike, type AppRole } from "@/lib/auth/roles";
@@ -27,7 +26,7 @@ import {
 import { PAYROLL_HISTORY_START_MONTH } from "@/lib/constants";
 import { useLoadMore } from "@/lib/use-load-more";
 import { LoadMoreFooter } from "@/components/ui/LoadMoreFooter";
-import { ChevronRight } from "lucide-react";
+import { AlertTriangle, ChevronRight } from "lucide-react";
 
 function monthHeading(monthValue: string): string {
   const [year, month] = monthValue.split("-").map(Number);
@@ -407,6 +406,8 @@ export function PayrollClient({
                 <p className="font-semibold text-brand-text">{row.staffName}</p>
                 <p className="text-xs text-brand-text/55">
                   {row.branchName} · {row.shiftCount} day{row.shiftCount === 1 ? "" : "s"}
+                  {row.pendingReviewCount > 0 &&
+                    ` · ${row.pendingReviewCount} sign-in review`}
                   {row.overtimeMinutes > 0 &&
                     ` · ${formatPayrollHoursLabel(row.overtimeMinutes, "ot")}`}
                   {row.undertimeMinutes > 0 &&
@@ -416,6 +417,15 @@ export function PayrollClient({
                 </p>
               </div>
               <div className="flex items-center gap-2">
+                {row.pendingReviewCount > 0 && (
+                  <span
+                    className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800"
+                    title="Sign-in times suggest OT or UT — review in details"
+                  >
+                    <AlertTriangle className="h-3 w-3" aria-hidden />
+                    Review
+                  </span>
+                )}
                 <span className="text-lg font-bold text-brand-text tabular-nums">
                   {formatCurrency(row.netPay)}
                 </span>

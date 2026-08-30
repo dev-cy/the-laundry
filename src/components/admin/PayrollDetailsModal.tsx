@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ChevronLeft } from "lucide-react";
+import { AlertTriangle, ChevronLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -12,6 +12,7 @@ import { useLoadMore } from "@/lib/use-load-more";
 import { formatCurrency } from "@/lib/utils";
 import {
   formatBranchPayrollLabel,
+  formatClockTime,
   formatPayrollDate,
   formatPayrollHoursLabel,
   type PayPeriod,
@@ -314,6 +315,21 @@ export function PayrollDetailsModal({
         )
       : 0;
 
+  function applySuggestedHours() {
+    if (!editView || !editingLine || !editingDraft) return;
+    const nextDraft: ShiftDraft = {
+      ...editingDraft,
+      ot: editingLine.autoOvertimeMinutes,
+      ut: editingLine.autoUndertimeMinutes,
+    };
+    setDraftShifts((state) => ({ ...state, [editView.scheduleId]: nextDraft }));
+    setHoursInput(
+      minutesToHours(
+        editView.type === "ot" ? nextDraft.ot : nextDraft.ut
+      )
+    );
+  }
+
   function renderShiftRow(line: SchedulePayrollLine, interactive: boolean) {
     const draft = draftShifts[line.scheduleId];
     const otMinutes = draft?.ot ?? line.totalOvertimeMinutes;
@@ -321,12 +337,38 @@ export function PayrollDetailsModal({
     const otLabel = formatPayrollHoursLabel(otMinutes, "ot");
     const utLabel = formatPayrollHoursLabel(utMinutes, "ut");
     const payAmount = formatCurrency(line.basePay);
+    const suggestedOt = formatPayrollHoursLabel(line.autoOvertimeMinutes, "ot");
+    const suggestedUt = formatPayrollHoursLabel(line.autoUndertimeMinutes, "ut");
 
     const left = (
-      <span className="text-sm text-brand-text/70">
-        {formatPayrollDate(line.date)}
-        {otLabel && <span className="ml-2 text-xs font-medium text-emerald-700">{otLabel}</span>}
-        {utLabel && <span className="ml-2 text-xs font-medium text-amber-700">{utLabel}</span>}
+      <span className="block min-w-0">
+        <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-brand-text/70">
+          {formatPayrollDate(line.date)}
+          {line.attendanceNeedsReview && (
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-600" aria-hidden />
+          )}
+          {otLabel && <span className="text-xs font-medium text-emerald-700">{otLabel}</span>}
+          {utLabel && <span className="text-xs font-medium text-amber-700">{utLabel}</span>}
+        </span>
+        {line.attendanceNeedsReview && line.attendanceReviewReason && (
+          <span className="mt-0.5 block text-[11px] text-amber-700">
+            {line.attendanceReviewReason}
+            {(suggestedOt || suggestedUt) && !otLabel && !utLabel && (
+              <span>
+                {" "}
+                — approve in payroll: {[suggestedOt, suggestedUt].filter(Boolean).join(", ")}
+              </span>
+            )}
+          </span>
+        )}
+        {!line.attendanceNeedsReview &&
+          (suggestedOt || suggestedUt) &&
+          otMinutes === 0 &&
+          utMinutes === 0 && (
+            <span className="mt-0.5 block text-[11px] text-brand-text/45">
+              Sign-in matched schedule
+            </span>
+          )}
       </span>
     );
 
@@ -395,6 +437,56 @@ export function PayrollDetailsModal({
                 {formatPayrollDate(editingLine.date)}
               </h2>
               <p className="mt-1 text-sm text-brand-text/60">{summary.staffName}</p>
+
+              <div className="mt-4 rounded-lg border border-brand-blue/10 bg-white px-4 py-3 text-sm">
+                <p className="text-xs font-semibold uppercase tracking-wide text-brand-text/50">
+                  Sign-in vs schedule
+                </p>
+                <div className="mt-2 grid grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <p className="text-brand-text/50">Scheduled</p>
+                    <p className="font-medium text-brand-text tabular-nums">
+                      {formatClockTime(editingLine.scheduledIn)} –{" "}
+                      {formatClockTime(editingLine.scheduledOut)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-brand-text/50">Actual</p>
+                    <p className="font-medium text-brand-text tabular-nums">
+                      {formatClockTime(editingLine.actualIn)} –{" "}
+                      {formatClockTime(editingLine.actualOut)}
+                    </p>
+                  </div>
+                </div>
+                {(editingLine.autoOvertimeMinutes > 0 || editingLine.autoUndertimeMinutes > 0) && (
+                  <p className="mt-2 text-xs text-amber-800">
+                    Suggested from sign-in:{" "}
+                    {[
+                      formatPayrollHoursLabel(editingLine.autoOvertimeMinutes, "ot"),
+                      formatPayrollHoursLabel(editingLine.autoUndertimeMinutes, "ut"),
+                    ]
+                      .filter(Boolean)
+                      .join(", ") || "—"}
+                  </p>
+                )}
+                {editingLine.attendanceNeedsReview &&
+                  !editingLine.actualIn &&
+                  !editingLine.actualOut && (
+                    <p className="mt-2 text-xs text-amber-800">
+                      No sign-in recorded — check Sign-In Log or enter OT/UT manually if needed.
+                    </p>
+                  )}
+                {(editingLine.autoOvertimeMinutes > 0 || editingLine.autoUndertimeMinutes > 0) &&
+                  canEditOtUt && (
+                    <button
+                      type="button"
+                      onClick={applySuggestedHours}
+                      className="mt-2 text-xs font-medium text-brand-blue hover:underline"
+                    >
+                      Apply suggested hours
+                    </button>
+                  )}
+              </div>
 
               <div className="mt-5">
                 <Input
@@ -550,10 +642,22 @@ export function PayrollDetailsModal({
                 </div>
               )}
 
+              {summary.pendingReviewCount > 0 && (
+                <div className="mt-4 flex gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                  <p>
+                    {summary.pendingReviewCount} shift
+                    {summary.pendingReviewCount === 1 ? "" : "s"} need review — sign-in times
+                    suggest OT or UT. Tap a date to approve hours in payroll.
+                  </p>
+                </div>
+              )}
+
               <div className="mt-5 rounded-xl bg-brand-light/25 px-4 py-3">
                 {canEditOtUt && summary.lines.length > 0 && (
                   <p className="mb-3 text-xs text-brand-text/55">
-                    Click or tap a date to set daily pay, OT, or UT. * marks a custom daily rate.
+                    Click or tap a date to approve OT/UT from sign-in, set daily pay, or adjust
+                    hours. * marks a custom daily rate.
                   </p>
                 )}
                 {summary.lines.length === 0 ? (

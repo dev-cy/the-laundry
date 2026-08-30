@@ -55,6 +55,76 @@ function computeSchedulePayroll(schedule, dailySalary) {
   return { overtimePay: Math.round(overtimePay), netPay: Math.round(dailySalary + overtimePay) };
 }
 
+const ATTENDANCE_TOLERANCE_MINUTES = 5;
+
+function computeAttendanceVariance(schedule) {
+  const scheduledIn = schedule.scheduled_time?.slice(0, 5) ?? null;
+  const scheduledOut = schedule.scheduled_time_out?.slice(0, 5) ?? null;
+  const actualIn = schedule.actual_time_in?.slice(0, 5) ?? null;
+  const actualOut = schedule.actual_time_out?.slice(0, 5) ?? null;
+  const hasSignIn = Boolean(actualIn);
+  const hasSignOut = Boolean(actualOut);
+  const manualOvertimeMinutes = Math.max(0, schedule.overtime_minutes ?? 0);
+  const manualUndertimeMinutes = Math.max(0, schedule.undertime_minutes ?? 0);
+
+  if (!hasSignIn || !hasSignOut) {
+    const reasons = [];
+    if (!hasSignIn) reasons.push("missing time in");
+    if (!hasSignOut) reasons.push("missing time out");
+    const manuallyAcknowledged =
+      manualOvertimeMinutes > 0 || manualUndertimeMinutes > 0;
+    return {
+      suggestedOvertimeMinutes: 0,
+      suggestedUndertimeMinutes: 0,
+      needsReview: !manuallyAcknowledged,
+      reviewReason: manuallyAcknowledged ? null : reasons.join(" and "),
+    };
+  }
+
+  let scheduledStart = timeToMinutes(scheduledIn);
+  let scheduledEnd = timeToMinutes(scheduledOut);
+  let actualStart = timeToMinutes(actualIn);
+  let actualEnd = timeToMinutes(actualOut);
+  if (scheduledEnd <= scheduledStart) scheduledEnd += 24 * 60;
+  if (actualEnd <= actualStart) actualEnd += 24 * 60;
+
+  const workedMinutes = Math.max(0, actualEnd - actualStart);
+  const scheduledMinutes = Math.max(0, scheduledEnd - scheduledStart);
+
+  let suggestedUndertimeMinutes = Math.max(0, actualStart - scheduledStart);
+  suggestedUndertimeMinutes += Math.max(0, scheduledEnd - actualEnd);
+  let suggestedOvertimeMinutes = Math.max(0, actualEnd - scheduledEnd);
+
+  const durationDiff = workedMinutes - scheduledMinutes;
+  if (durationDiff > ATTENDANCE_TOLERANCE_MINUTES && suggestedOvertimeMinutes === 0) {
+    suggestedOvertimeMinutes = durationDiff;
+  }
+  if (durationDiff < -ATTENDANCE_TOLERANCE_MINUTES && suggestedUndertimeMinutes === 0) {
+    suggestedUndertimeMinutes = -durationDiff;
+  }
+
+  if (suggestedUndertimeMinutes <= ATTENDANCE_TOLERANCE_MINUTES) suggestedUndertimeMinutes = 0;
+  if (suggestedOvertimeMinutes <= ATTENDANCE_TOLERANCE_MINUTES) suggestedOvertimeMinutes = 0;
+
+  const otApproved =
+    suggestedOvertimeMinutes === 0 || manualOvertimeMinutes >= suggestedOvertimeMinutes;
+  const utApproved =
+    suggestedUndertimeMinutes === 0 || manualUndertimeMinutes >= suggestedUndertimeMinutes;
+  const hasSuggestion = suggestedOvertimeMinutes > 0 || suggestedUndertimeMinutes > 0;
+
+  let reviewReason = null;
+  if (hasSuggestion && (!otApproved || !utApproved)) {
+    reviewReason = "pending approval";
+  }
+
+  return {
+    suggestedOvertimeMinutes,
+    suggestedUndertimeMinutes,
+    needsReview: hasSuggestion && (!otApproved || !utApproved),
+    reviewReason,
+  };
+}
+
 function computeStaffPayrollSummaries({
   staff,
   schedules,
@@ -130,6 +200,53 @@ assert(advanceOnly.length === 1, "Advance-only period still lists staff");
 assert(advanceOnly[0].cashAdvanceDeduction === 200, "Cash advance amount tracked");
 
 assert(PAYROLL_HISTORY_START_MONTH === "2026-08", "History starts August 2026");
+
+const lateOut = computeAttendanceVariance({
+  scheduled_time: "07:00",
+  scheduled_time_out: "16:00",
+  actual_time_in: "07:00",
+  actual_time_out: "18:00",
+  overtime_minutes: 0,
+  undertime_minutes: 0,
+});
+assert(
+  lateOut.suggestedOvertimeMinutes === 120,
+  "Two hours late clock-out suggests 2hrs OT"
+);
+assert(lateOut.needsReview === true, "Unapproved suggested OT flags review");
+
+const approvedOt = computeAttendanceVariance({
+  scheduled_time: "07:00",
+  scheduled_time_out: "16:00",
+  actual_time_in: "07:00",
+  actual_time_out: "18:00",
+  overtime_minutes: 120,
+  undertime_minutes: 0,
+});
+assert(approvedOt.needsReview === false, "Matching approved OT clears review");
+
+const missingIn = computeAttendanceVariance({
+  scheduled_time: "07:00",
+  scheduled_time_out: "16:00",
+  actual_time_in: null,
+  actual_time_out: null,
+  overtime_minutes: 0,
+  undertime_minutes: 0,
+});
+assert(missingIn.needsReview === true, "Missing sign-in needs review");
+
+const acknowledgedMissing = computeAttendanceVariance({
+  scheduled_time: "07:00",
+  scheduled_time_out: "16:00",
+  actual_time_in: null,
+  actual_time_out: null,
+  overtime_minutes: 60,
+  undertime_minutes: 0,
+});
+assert(
+  acknowledgedMissing.needsReview === false,
+  "Manual OT clears missing sign-in review"
+);
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);

@@ -144,5 +144,50 @@ assert(
   })
 );
 
+function buildPeriodIncome(sales, expenseTotal) {
+  const grossIncome = sales.cashReceived;
+  return {
+    grossIncome,
+    totalExpenses: expenseTotal,
+    netIncome: grossIncome - expenseTotal,
+  };
+}
+
+function canAccessAdminPath(role, pathname) {
+  if (role === "super_admin" || role === "admin") return true;
+  return (
+    pathname === "/admin" ||
+    pathname.startsWith("/admin/reports") ||
+    pathname.startsWith("/admin/transactions") ||
+    pathname.startsWith("/admin/attendance")
+  );
+}
+
+console.log("\ncanAccessAdminPath:");
+assert("staff can open reports", canAccessAdminPath("staff", "/admin/reports"));
+assert("staff can open sign-in", canAccessAdminPath("staff", "/admin/attendance"));
+assert("staff blocked from expenses", !canAccessAdminPath("staff", "/admin/expenses"));
+assert(
+  "staff blocked from sign-in overview",
+  !canAccessAdminPath("staff", "/admin/sign-in-overview")
+);
+assert("staff blocked from payroll", !canAccessAdminPath("staff", "/admin/payroll"));
+assert("admin can open expenses", canAccessAdminPath("admin", "/admin/expenses"));
+assert(
+  "admin can open sign-in overview",
+  canAccessAdminPath("admin", "/admin/sign-in-overview")
+);
+
+console.log("\nbuildPeriodIncome:");
+assert(
+  "net = gross - expenses",
+  buildPeriodIncome({ cashReceived: 10000, totalSales: 12000, unpaid: 2000 }, 3000).netIncome ===
+    7000
+);
+assert(
+  "gross uses cash received",
+  buildPeriodIncome({ cashReceived: 5000, totalSales: 5000, unpaid: 0 }, 0).grossIncome === 5000
+);
+
 console.log(failed ? `\n${failed} failed` : `\nAll ${passed} checks passed.`);
 process.exit(failed ? 1 : 0);

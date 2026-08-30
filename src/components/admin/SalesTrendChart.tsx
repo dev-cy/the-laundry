@@ -3,12 +3,19 @@
 import { useEffect, useMemo, useState } from "react";
 import { formatCurrency } from "@/lib/utils";
 
-type ChartSeries = "totalSales" | "cashReceived" | "unpaid";
+type ChartSeries = "totalSales" | "cashReceived" | "unpaid" | "expenses" | "netIncome";
 
 type SalesTrendChartProps = {
   title: string;
   subtitle?: string;
-  data: { label: string; totalSales: number; cashReceived: number; unpaid: number }[];
+  data: {
+    label: string;
+    totalSales: number;
+    cashReceived: number;
+    unpaid: number;
+    expenses?: number;
+    netIncome?: number;
+  }[];
   series?: ChartSeries;
 };
 
@@ -31,6 +38,16 @@ const SERIES_META: Record<
     bar: "#d97706",
     line: "#b45309",
   },
+  expenses: {
+    label: "Expenses",
+    bar: "#dc2626",
+    line: "#b91c1c",
+  },
+  netIncome: {
+    label: "Net income",
+    bar: "#7c3aed",
+    line: "#6d28d9",
+  },
 };
 
 export function SalesTrendChart({
@@ -46,8 +63,18 @@ export function SalesTrendChart({
   }, []);
 
   const meta = SERIES_META[series];
-  const values = useMemo(() => data.map((point) => point[series]), [data, series]);
+  const values = useMemo(
+    () =>
+      data.map((point) => {
+        if (series === "expenses") return point.expenses ?? 0;
+        if (series === "netIncome") return point.netIncome ?? 0;
+        return point[series];
+      }),
+    [data, series]
+  );
   const max = Math.max(...values, 1);
+  const min = Math.min(...values, 0);
+  const range = Math.max(max - min, 1);
   const width = 640;
   const height = 220;
   const padX = 24;
@@ -59,7 +86,7 @@ export function SalesTrendChart({
 
   const points = values.map((value, index) => {
     const x = padX + index * (barWidth + barGap) + barWidth / 2;
-    const y = padY + chartH - (value / max) * chartH;
+    const y = padY + chartH - ((value - min) / range) * chartH;
     return { x, y, value, label: data[index]?.label ?? "" };
   });
 

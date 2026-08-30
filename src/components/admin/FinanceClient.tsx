@@ -12,12 +12,24 @@ import { formatCurrency } from "@/lib/utils";
 import {
   fetchFinanceStats,
   type FinanceStats,
+  type PeriodIncome,
 } from "@/lib/finance-stats";
-import type { PeriodTotals } from "@/lib/dashboard-stats";
 
 function periodValues(
   stats: FinanceStats,
-  pick: (period: PeriodTotals) => number
+  pick: (period: PeriodIncome) => number
+) {
+  return [
+    { label: "Daily", value: pick(stats.income.daily) },
+    { label: "Monthly", value: pick(stats.income.monthly) },
+    { label: "Annually", value: pick(stats.income.annual) },
+    { label: "All Time", value: pick(stats.income.allTime) },
+  ];
+}
+
+function salesPeriodValues(
+  stats: FinanceStats,
+  pick: (period: FinanceStats["daily"]) => number
 ) {
   return [
     { label: "Daily", value: pick(stats.daily) },
@@ -36,7 +48,7 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
 }
 
 type ChartRange = "month" | "year";
-type ChartSeries = "totalSales" | "cashReceived" | "unpaid";
+type ChartSeries = "totalSales" | "cashReceived" | "unpaid" | "expenses" | "netIncome";
 
 export function FinanceClient({
   today,
@@ -73,6 +85,13 @@ export function FinanceClient({
   const chartData =
     chartRange === "month" ? stats.dailyChart : stats.monthlyChart;
 
+  const monthIncome = stats.income.monthly.grossIncome;
+  const allTimeIncome = stats.income.allTime.grossIncome;
+  const showNoSalesThisMonth =
+    monthIncome === 0 && allTimeIncome > 0;
+  const showCashOnHandNote =
+    stats.cashOnHand > 0 && stats.income.daily.grossIncome === 0;
+
   async function handleBranchChange(branchId: string) {
     setSelectedBranch(branchId);
     setLoading(true);
@@ -88,7 +107,7 @@ export function FinanceClient({
         <div>
           <h1 className="text-2xl font-bold text-brand-text mb-1">Finance</h1>
           <p className="text-brand-text/60">
-            Sales overview and trends — {today}
+            Sales, expenses, and income overview — {today}
           </p>
         </div>
         {isAdminLike(role) && (
@@ -108,6 +127,43 @@ export function FinanceClient({
           </div>
         )}
       </div>
+
+      {!stats.expensesAvailable && (
+        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          Expenses are not set up yet. Run{" "}
+          <code className="rounded bg-amber-100 px-1.5 py-0.5 text-xs">
+            supabase/migrations/20260830_expenses.sql
+          </code>{" "}
+          in the Supabase SQL Editor, then refresh this page.
+        </div>
+      )}
+
+      {showNoSalesThisMonth && (
+        <div className="mb-6 rounded-xl border border-brand-blue/15 bg-brand-light/10 px-4 py-3 text-sm text-brand-text/80">
+          No paid sales are recorded for{" "}
+          <span className="font-medium">{today.slice(0, 7)}</span> yet. Daily and
+          monthly totals use transaction dates — your all-time total is{" "}
+          {formatCurrency(allTimeIncome)} from earlier entries. Add transactions or
+          complete daily report sales for this month to update these figures.
+        </div>
+      )}
+
+      {showCashOnHandNote && (
+        <div className="mb-6 rounded-xl border border-brand-blue/15 bg-white px-4 py-3 text-sm text-brand-text/80">
+          Today&apos;s daily report shows{" "}
+          {formatCurrency(stats.cashOnHand)} cash on hand, but finance income
+          comes from <strong>transactions</strong> (paid sales). Enter today&apos;s
+          sales under{" "}
+          <Link href="/admin/transactions" className="text-brand-blue hover:underline">
+            Transactions
+          </Link>{" "}
+          or line items in{" "}
+          <Link href="/admin/reports" className="text-brand-blue hover:underline">
+            Daily Reports
+          </Link>{" "}
+          to reflect them here.
+        </div>
+      )}
 
       <section className="mb-8 space-y-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -130,6 +186,8 @@ export function FinanceClient({
                 { value: "totalSales", label: "Total sales" },
                 { value: "cashReceived", label: "Cash received" },
                 { value: "unpaid", label: "Unpaid" },
+                { value: "expenses", label: "Expenses" },
+                { value: "netIncome", label: "Net income" },
               ]}
             />
           </div>
@@ -143,21 +201,46 @@ export function FinanceClient({
       </section>
 
       <section className="mb-8">
+        <SectionHeading>Income summary</SectionHeading>
+        <p className="mb-4 text-sm text-brand-text/60">
+          Gross income is cash received from paid sales. Net income subtracts recorded
+          expenses. The large figure on each card is <strong>today</strong>; monthly,
+          annual, and all-time totals are listed below it.
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <StatCard
+            label="Gross Income"
+            variant="success"
+            periods={periodValues(stats, (p) => p.grossIncome)}
+          />
+          <StatCard
+            label="Expenses"
+            variant="warning"
+            periods={periodValues(stats, (p) => p.totalExpenses)}
+          />
+          <StatCard
+            label="Net Income"
+            periods={periodValues(stats, (p) => p.netIncome)}
+          />
+        </div>
+      </section>
+
+      <section className="mb-8">
         <SectionHeading>Sales summary</SectionHeading>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <StatCard
             label="Cash Received"
-            periods={periodValues(stats, (p) => p.cashReceived)}
+            periods={salesPeriodValues(stats, (p) => p.cashReceived)}
           />
           <StatCard
             label="Unpaid"
             variant="warning"
-            periods={periodValues(stats, (p) => p.unpaid)}
+            periods={salesPeriodValues(stats, (p) => p.unpaid)}
           />
           <StatCard
             label="Total Sales"
             variant="success"
-            periods={periodValues(stats, (p) => p.totalSales)}
+            periods={salesPeriodValues(stats, (p) => p.totalSales)}
           />
         </div>
         {stats.cashOnHand > 0 && (
@@ -201,6 +284,12 @@ export function FinanceClient({
       </section>
 
       <div className="flex flex-wrap gap-3 text-sm">
+        <Link
+          href="/admin/expenses"
+          className="rounded-lg border border-brand-blue/15 bg-white px-4 py-2 text-brand-text hover:shadow-sm transition-shadow"
+        >
+          Manage expenses
+        </Link>
         <Link
           href="/admin/transactions"
           className="rounded-lg border border-brand-blue/15 bg-white px-4 py-2 text-brand-text hover:shadow-sm transition-shadow"

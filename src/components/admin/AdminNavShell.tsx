@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import {
   Calendar,
+  ClipboardList,
   Clock,
   CreditCard,
   FileText,
@@ -16,6 +17,7 @@ import {
   Users,
   Wallet,
   Banknote,
+  Receipt,
   X,
 } from "lucide-react";
 import { Logo } from "@/components/Logo";
@@ -28,9 +30,11 @@ const NAV_ITEMS = [
   { href: "/admin/payroll", label: "Payroll", icon: Banknote },
   { href: "/admin/reports", label: "Reports", icon: FileText },
   { href: "/admin/attendance", label: "Sign In", icon: Clock },
+  { href: "/admin/sign-in-overview", label: "Sign-In Log", icon: ClipboardList },
   { href: "/admin/transactions", label: "Transactions", icon: CreditCard },
   { href: "/admin/schedules", label: "Schedules", icon: Calendar },
   { href: "/admin/cash-release", label: "Release Cash", icon: Wallet },
+  { href: "/admin/expenses", label: "Expenses", icon: Receipt },
   { href: "/admin/users", label: "Users", icon: UserCog },
   { href: "/admin/staff", label: "Staff", icon: Users },
   { href: "/admin/inventory", label: "Inventory", icon: Package },

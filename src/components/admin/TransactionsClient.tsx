@@ -129,6 +129,7 @@ export function TransactionsClient({
       ...form,
       branch_id: lockedBranchId ?? form.branch_id,
       customer_name: form.customer_name || null,
+      description: form.description.trim() || "",
       weight_kg_whole: Math.max(0, form.weight_kg_whole),
       weight_kg_frac: Math.min(9, Math.max(0, form.weight_kg_frac)),
     };
@@ -261,7 +262,7 @@ export function TransactionsClient({
               label="Description"
               value={form.description}
               onChange={(e) => setForm({ ...form, description: e.target.value })}
-              required
+              placeholder="Optional"
             />
             <Input
               label="Amount (₱)"
@@ -444,7 +445,7 @@ export function TransactionsClient({
                   <td className="px-4 py-3 text-right tabular-nums whitespace-nowrap">
                     {formatWeightKg(t.weight_kg_whole ?? 0, t.weight_kg_frac ?? 0)}
                   </td>
-                  <td className="px-4 py-3">{t.description}</td>
+                  <td className="px-4 py-3">{t.description || "—"}</td>
                   <td className="px-4 py-3 text-right font-medium">
                     {formatCurrency(t.amount)}
                   </td>

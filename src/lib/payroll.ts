@@ -40,6 +40,26 @@ export type SchedulePayrollLine = {
   overtimePay: number;
   undertimeDeduction: number;
   netPay: number;
+  scheduledIn: string | null;
+  scheduledOut: string | null;
+  actualIn: string | null;
+  actualOut: string | null;
+  attendanceNeedsReview: boolean;
+  attendanceReviewReason: string | null;
+};
+
+export type AttendanceVariance = {
+  hasSignIn: boolean;
+  hasSignOut: boolean;
+  scheduledIn: string | null;
+  scheduledOut: string | null;
+  actualIn: string | null;
+  actualOut: string | null;
+  workedMinutes: number;
+  suggestedOvertimeMinutes: number;
+  suggestedUndertimeMinutes: number;
+  needsReview: boolean;
+  reviewReason: string | null;
 };
 
 export type StaffPayrollSummary = {
@@ -58,6 +78,7 @@ export type StaffPayrollSummary = {
   grossPay: number;
   cashAdvanceDeduction: number;
   netPay: number;
+  pendingReviewCount: number;
   lines: SchedulePayrollLine[];
   cashAdvances: StaffCashAdvance[];
 };
@@ -67,6 +88,123 @@ const SHIFT_LABELS: Record<Schedule["service_type"], string> = {
   delivery: "Afternoon",
   both: "Whole day",
 };
+
+const ATTENDANCE_TOLERANCE_MINUTES = 5;
+
+export function formatClockTime(value: string | null | undefined): string {
+  if (!value) return "—";
+  return value.slice(0, 5);
+}
+
+export function computeAttendanceVariance(
+  schedule: Pick<
+    PayrollScheduleInput,
+    | "scheduled_time"
+    | "scheduled_time_out"
+    | "actual_time_in"
+    | "actual_time_out"
+    | "overtime_minutes"
+    | "undertime_minutes"
+  >
+): AttendanceVariance {
+  const scheduledIn = schedule.scheduled_time?.slice(0, 5) ?? null;
+  const scheduledOut = schedule.scheduled_time_out?.slice(0, 5) ?? null;
+  const actualIn = schedule.actual_time_in?.slice(0, 5) ?? null;
+  const actualOut = schedule.actual_time_out?.slice(0, 5) ?? null;
+  const hasSignIn = Boolean(actualIn);
+  const hasSignOut = Boolean(actualOut);
+  const manualOvertimeMinutes = Math.max(0, schedule.overtime_minutes ?? 0);
+  const manualUndertimeMinutes = Math.max(0, schedule.undertime_minutes ?? 0);
+
+  if (!hasSignIn || !hasSignOut) {
+    const reasons: string[] = [];
+    if (!hasSignIn) reasons.push("missing time in");
+    if (!hasSignOut) reasons.push("missing time out");
+    const manuallyAcknowledged =
+      manualOvertimeMinutes > 0 || manualUndertimeMinutes > 0;
+    return {
+      hasSignIn,
+      hasSignOut,
+      scheduledIn,
+      scheduledOut,
+      actualIn,
+      actualOut,
+      workedMinutes: 0,
+      suggestedOvertimeMinutes: 0,
+      suggestedUndertimeMinutes: 0,
+      needsReview: !manuallyAcknowledged,
+      reviewReason: manuallyAcknowledged ? null : reasons.join(" and "),
+    };
+  }
+
+  const scheduledStart = timeToMinutes(scheduledIn);
+  let scheduledEnd = timeToMinutes(scheduledOut);
+  const actualStart = timeToMinutes(actualIn);
+  let actualEnd = timeToMinutes(actualOut);
+  if (scheduledEnd <= scheduledStart) scheduledEnd += 24 * 60;
+  if (actualEnd <= actualStart) actualEnd += 24 * 60;
+
+  const workedMinutes = Math.max(0, actualEnd - actualStart);
+  const scheduledMinutes = Math.max(0, scheduledEnd - scheduledStart);
+
+  let suggestedUndertimeMinutes = Math.max(0, actualStart - scheduledStart);
+  suggestedUndertimeMinutes += Math.max(0, scheduledEnd - actualEnd);
+  let suggestedOvertimeMinutes = Math.max(0, actualEnd - scheduledEnd);
+
+  const durationDiff = workedMinutes - scheduledMinutes;
+  if (durationDiff > ATTENDANCE_TOLERANCE_MINUTES && suggestedOvertimeMinutes === 0) {
+    suggestedOvertimeMinutes = durationDiff;
+  }
+  if (durationDiff < -ATTENDANCE_TOLERANCE_MINUTES && suggestedUndertimeMinutes === 0) {
+    suggestedUndertimeMinutes = -durationDiff;
+  }
+
+  if (suggestedUndertimeMinutes <= ATTENDANCE_TOLERANCE_MINUTES) {
+    suggestedUndertimeMinutes = 0;
+  }
+  if (suggestedOvertimeMinutes <= ATTENDANCE_TOLERANCE_MINUTES) {
+    suggestedOvertimeMinutes = 0;
+  }
+
+  const otApproved =
+    suggestedOvertimeMinutes === 0 ||
+    manualOvertimeMinutes >= suggestedOvertimeMinutes;
+  const utApproved =
+    suggestedUndertimeMinutes === 0 ||
+    manualUndertimeMinutes >= suggestedUndertimeMinutes;
+  const hasSuggestion =
+    suggestedOvertimeMinutes > 0 || suggestedUndertimeMinutes > 0;
+
+  let reviewReason: string | null = null;
+  if (hasSuggestion && (!otApproved || !utApproved)) {
+    const parts: string[] = [];
+    if (suggestedOvertimeMinutes > 0 && !otApproved) {
+      parts.push(`${formatPayrollHoursLabel(suggestedOvertimeMinutes, "ot")} suggested`);
+    }
+    if (suggestedUndertimeMinutes > 0 && !utApproved) {
+      parts.push(`${formatPayrollHoursLabel(suggestedUndertimeMinutes, "ut")} suggested`);
+    }
+    reviewReason = parts.join(", ");
+  }
+
+  return {
+    hasSignIn,
+    hasSignOut,
+    scheduledIn,
+    scheduledOut,
+    actualIn,
+    actualOut,
+    workedMinutes,
+    suggestedOvertimeMinutes,
+    suggestedUndertimeMinutes,
+    needsReview: hasSuggestion && (!otApproved || !utApproved),
+    reviewReason,
+  };
+}
+
+export function countPendingAttendanceReviews(lines: SchedulePayrollLine[]): number {
+  return lines.filter((line) => line.attendanceNeedsReview).length;
+}
 
 export function timeToMinutes(value: string | null | undefined): number {
   if (!value) return 0;
@@ -139,6 +277,7 @@ export function computeSchedulePayroll(
   staffDailySalary: number
 ): SchedulePayrollLine {
   const { dailySalary, hasPayOverride } = resolveShiftDailyPay(schedule, staffDailySalary);
+  const variance = computeAttendanceVariance(schedule);
   const scheduledMinutes = minutesBetween(
     schedule.scheduled_time ?? "07:00",
     schedule.scheduled_time_out ?? "16:00"
@@ -160,9 +299,9 @@ export function computeSchedulePayroll(
     date: schedule.scheduled_date,
     shiftLabel: SHIFT_LABELS[schedule.service_type],
     scheduledMinutes,
-    workedMinutes: scheduledMinutes,
-    autoOvertimeMinutes: 0,
-    autoUndertimeMinutes: 0,
+    workedMinutes: variance.workedMinutes || scheduledMinutes,
+    autoOvertimeMinutes: variance.suggestedOvertimeMinutes,
+    autoUndertimeMinutes: variance.suggestedUndertimeMinutes,
     manualOvertimeMinutes,
     manualUndertimeMinutes,
     totalOvertimeMinutes,
@@ -174,6 +313,12 @@ export function computeSchedulePayroll(
     overtimePay: Math.round(overtimePay),
     undertimeDeduction: Math.round(undertimeDeduction),
     netPay,
+    scheduledIn: variance.scheduledIn,
+    scheduledOut: variance.scheduledOut,
+    actualIn: variance.actualIn,
+    actualOut: variance.actualOut,
+    attendanceNeedsReview: variance.needsReview,
+    attendanceReviewReason: variance.reviewReason,
   };
 }
 
@@ -435,6 +580,7 @@ export function computeStaffPayrollSummaries({
         grossPay,
         cashAdvanceDeduction,
         netPay,
+        pendingReviewCount: countPendingAttendanceReviews(lines),
         lines,
         cashAdvances: memberAdvances,
       };

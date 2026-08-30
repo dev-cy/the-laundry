@@ -2,11 +2,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getAssignedBranchId, getUserRole } from "@/lib/auth/roles";
 import { resolveBranches } from "@/lib/branches";
 import { AttendanceClient } from "@/components/admin/AttendanceClient";
+import { todayISO } from "@/lib/utils";
 import type { Schedule, Staff } from "@/lib/types";
-
-function todayValue(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 export default async function AttendancePage() {
   const supabase = await createClient();
@@ -16,7 +13,7 @@ export default async function AttendancePage() {
   const role = getUserRole(user);
   const assignedBranchId = getAssignedBranchId(user);
   const staffNeedsBranch = role === "staff" && !assignedBranchId;
-  const today = todayValue();
+  const today = todayISO();
 
   if (staffNeedsBranch) {
     return (
@@ -31,6 +28,8 @@ export default async function AttendancePage() {
   const initialBranchId = branchScope ?? null;
 
   const staffQuery = supabase.from("staff").select("*").order("name");
+  // Admins: all of today's shifts. Staff: RLS returns home-branch roster shifts
+  // (including when duty is scheduled at another location).
   const scheduleQuery = supabase
     .from("schedules")
     .select("*")
@@ -40,7 +39,6 @@ export default async function AttendancePage() {
 
   if (branchScope) {
     staffQuery.eq("branch_id", branchScope);
-    scheduleQuery.eq("branch_id", branchScope);
   }
 
   const [{ data: branches }, { data: staff }, { data: schedules }] = await Promise.all([

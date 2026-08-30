@@ -7,11 +7,9 @@ import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import type { Branch, Schedule, Staff } from "@/lib/types";
 import { isAdminLike, type AppRole } from "@/lib/auth/roles";
-import { resolveStaffForSchedule } from "@/lib/payroll";
-
-function todayValue(): string {
-  return new Date().toISOString().slice(0, 10);
-}
+import { AlertTriangle } from "lucide-react";
+import { computeAttendanceVariance, formatPayrollHoursLabel } from "@/lib/payroll";
+import { todayISO } from "@/lib/utils";
 
 function currentTimeValue(): string {
   const now = new Date();
@@ -21,6 +19,13 @@ function currentTimeValue(): string {
 function formatTimeLabel(value: string | null | undefined): string {
   if (!value) return "—";
   return value.slice(0, 5);
+}
+
+function scheduleMatchesStaff(schedule: Schedule, member: Staff): boolean {
+  if (schedule.staff_id) return schedule.staff_id === member.id;
+  return (
+    schedule.customer_name.trim().toLowerCase() === member.name.trim().toLowerCase()
+  );
 }
 
 const SHIFT_LABELS: Record<Schedule["service_type"], string> = {
@@ -43,6 +48,7 @@ export function AttendanceClient({
   role: AppRole;
 }) {
   const supabase = createClient();
+  const today = todayISO();
   const [branchId, setBranchId] = useState(lockedBranchId ?? branches[0]?.id ?? "");
   const [staffId, setStaffId] = useState("");
   const [staff, setStaff] = useState(initialStaff);
@@ -55,31 +61,56 @@ export function AttendanceClient({
     Record<string, { actual_time_in: string; actual_time_out: string }>
   >({});
 
-  const branchStaff = useMemo(
-    () =>
-      staff
-        .filter((member) => member.branch_id === branchId)
-        .sort((a, b) => a.name.localeCompare(b.name)),
-    [staff, branchId]
+  const branchNameById = useMemo(
+    () => Object.fromEntries(branches.map((branch) => [branch.id, branch.name])),
+    [branches]
   );
+
+  const branchStaff = useMemo(() => {
+    const scheduledHereIds = new Set(
+      schedules
+        .filter(
+          (schedule) =>
+            schedule.scheduled_date === today &&
+            schedule.branch_id === branchId &&
+            schedule.status !== "cancelled" &&
+            schedule.staff_id
+        )
+        .map((schedule) => schedule.staff_id as string)
+    );
+
+    return staff
+      .filter(
+        (member) =>
+          member.branch_id === branchId || scheduledHereIds.has(member.id)
+      )
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [staff, branchId, schedules, today]);
 
   const selectedStaff = useMemo(
-    () => branchStaff.find((member) => member.id === staffId),
-    [branchStaff, staffId]
+    () =>
+      branchStaff.find((member) => member.id === staffId) ??
+      staff.find((member) => member.id === staffId),
+    [branchStaff, staff, staffId]
   );
 
+  /** Prefer shifts at the selected branch; still show the staff member's other-branch shifts today. */
   const todaySchedules = useMemo(() => {
     if (!selectedStaff) return [];
-    return schedules
+    const matched = schedules
       .filter((schedule) => {
-        if (schedule.scheduled_date !== todayValue()) return false;
-        if (schedule.branch_id !== branchId) return false;
+        if (schedule.scheduled_date !== today) return false;
         if (schedule.status === "cancelled") return false;
-        const matched = resolveStaffForSchedule(schedule, [selectedStaff]);
-        return matched?.id === selectedStaff.id;
+        return scheduleMatchesStaff(schedule, selectedStaff);
       })
-      .sort((a, b) => (a.scheduled_time ?? "").localeCompare(b.scheduled_time ?? ""));
-  }, [schedules, selectedStaff, branchId]);
+      .sort((a, b) => {
+        const aHere = a.branch_id === branchId ? 0 : 1;
+        const bHere = b.branch_id === branchId ? 0 : 1;
+        if (aHere !== bHere) return aHere - bHere;
+        return (a.scheduled_time ?? "").localeCompare(b.scheduled_time ?? "");
+      });
+    return matched;
+  }, [schedules, selectedStaff, branchId, today]);
 
   useEffect(() => {
     setForms(
@@ -105,16 +136,27 @@ export function AttendanceClient({
     setLoading(true);
     setError(null);
 
-    const today = todayValue();
+    const staffQuery = isAdminLike(role)
+      ? supabase.from("staff").select("*").order("name")
+      : supabase.from("staff").select("*").eq("branch_id", nextBranchId).order("name");
+
+    const scheduleQuery = isAdminLike(role)
+      ? supabase
+          .from("schedules")
+          .select("*")
+          .eq("scheduled_date", today)
+          .neq("status", "cancelled")
+          .order("scheduled_time", { ascending: true })
+      : supabase
+          .from("schedules")
+          .select("*")
+          .eq("scheduled_date", today)
+          .neq("status", "cancelled")
+          .order("scheduled_time", { ascending: true });
+
     const [{ data: nextStaff }, { data: nextSchedules }] = await Promise.all([
-      supabase.from("staff").select("*").eq("branch_id", nextBranchId).order("name"),
-      supabase
-        .from("schedules")
-        .select("*")
-        .eq("branch_id", nextBranchId)
-        .eq("scheduled_date", today)
-        .neq("status", "cancelled")
-        .order("scheduled_time", { ascending: true }),
+      staffQuery,
+      scheduleQuery,
     ]);
 
     if (nextStaff) setStaff(nextStaff as Staff[]);
@@ -184,7 +226,7 @@ export function AttendanceClient({
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-brand-text">Sign In</h1>
         <p className="text-brand-text/60 mt-1">
-          Record time in and time out for today — {todayValue()}
+          Record time in and time out for today — {today}
         </p>
       </div>
 
@@ -231,12 +273,25 @@ export function AttendanceClient({
         <p className="text-sm text-brand-text/50">Select a staff member to sign in.</p>
       ) : todaySchedules.length === 0 ? (
         <div className="rounded-xl border border-brand-blue/10 bg-white px-4 py-8 text-center text-sm text-brand-text/50 max-w-2xl">
-          No shift scheduled for {selectedStaff.name} today at {branchName}.
+          No shift scheduled for {selectedStaff.name} today.
         </div>
       ) : (
         <div className="space-y-4 max-w-2xl">
           {todaySchedules.map((schedule) => {
             const form = forms[schedule.id] ?? { actual_time_in: "", actual_time_out: "" };
+            const shiftBranchName =
+              branchNameById[schedule.branch_id] ?? "Another branch";
+            const isOtherBranch = schedule.branch_id !== branchId;
+            const variance = computeAttendanceVariance({
+              ...schedule,
+              actual_time_in: form.actual_time_in || null,
+              actual_time_out: form.actual_time_out || null,
+            });
+            const suggestedOt = formatPayrollHoursLabel(variance.suggestedOvertimeMinutes, "ot");
+            const suggestedUt = formatPayrollHoursLabel(
+              variance.suggestedUndertimeMinutes,
+              "ut"
+            );
             return (
               <div
                 key={schedule.id}
@@ -249,7 +304,14 @@ export function AttendanceClient({
                       {SHIFT_LABELS[schedule.service_type]} · Scheduled{" "}
                       {formatTimeLabel(schedule.scheduled_time)} –{" "}
                       {formatTimeLabel(schedule.scheduled_time_out)}
+                      {" · "}
+                      {shiftBranchName}
                     </p>
+                    {isOtherBranch && (
+                      <p className="mt-1 text-xs text-amber-700">
+                        This shift is at {shiftBranchName} (not {branchName}).
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -289,6 +351,32 @@ export function AttendanceClient({
                     </button>
                   </div>
                 </div>
+
+                {variance.needsReview && (
+                  <div className="mb-4 flex gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-900">
+                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+                    <div>
+                      {variance.reviewReason ? (
+                        <p>
+                          {variance.reviewReason.charAt(0).toUpperCase() +
+                            variance.reviewReason.slice(1)}
+                          .
+                        </p>
+                      ) : (
+                        <p>Sign-in times may need review.</p>
+                      )}
+                      {(suggestedOt || suggestedUt) && (
+                        <p className="mt-1">
+                          Suggested: {[suggestedOt, suggestedUt].filter(Boolean).join(", ")} — an
+                          admin must approve OT/UT in Payroll.
+                        </p>
+                      )}
+                      {(!form.actual_time_in || !form.actual_time_out) && (
+                        <p className="mt-1">Record both time in and time out when the shift ends.</p>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 <Button
                   type="button"

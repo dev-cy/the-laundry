@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getAssignedBranchId, getUserRole } from "@/lib/auth/roles";
 import { resolveBranches } from "@/lib/branches";
 import { ReportsPageClient } from "@/components/admin/ReportsClient";
-import type { DailyReport } from "@/lib/types";
+import type { DailyReport, Staff } from "@/lib/types";
 
 export default async function ReportsPage() {
   const supabase = await createClient();
@@ -29,9 +29,10 @@ export default async function ReportsPage() {
     .limit(50);
   if (role === "staff" && assignedBranchId) reportsQuery.eq("branch_id", assignedBranchId);
 
-  const [{ data: branches }, { data: reports }] = await Promise.all([
+  const [{ data: branches }, { data: reports }, { data: staff }] = await Promise.all([
     supabase.from("branches").select("*").order("name"),
     reportsQuery,
+    supabase.from("staff").select("*").order("name"),
   ]);
 
   const resolvedBranches = resolveBranches(branches);
@@ -43,6 +44,7 @@ export default async function ReportsPage() {
   return (
     <ReportsPageClient
       branches={scopedBranches}
+      initialStaff={(staff as Staff[]) ?? []}
       initialReports={(reports as DailyReport[]) ?? []}
       role={role}
       lockedBranchId={role === "staff" ? assignedBranchId : null}
