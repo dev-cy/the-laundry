@@ -8,11 +8,21 @@ import { StatCard } from "@/components/ui/StatCard";
 import { Select } from "@/components/ui/Select";
 import type { Branch } from "@/lib/types";
 import { isAdminLike, type AppRole } from "@/lib/auth/roles";
-import { formatCurrency } from "@/lib/utils";
 import {
   fetchDashboardStats,
   type DashboardStats,
+  type PeriodTotals,
 } from "@/lib/dashboard-stats";
+
+function periodValues(
+  stats: DashboardStats,
+  pick: (period: PeriodTotals) => number
+) {
+  return [
+    { label: "Daily", value: pick(stats.daily) },
+    { label: "Monthly", value: pick(stats.monthly) },
+  ];
+}
 
 const QUICK_LINKS = [
   { href: "/admin/reports", label: "New Daily Report", icon: FileText },
@@ -20,6 +30,14 @@ const QUICK_LINKS = [
   { href: "/admin/schedules", label: "View Schedules", icon: Calendar },
   { href: "/admin/inventory", label: "Check Inventory", icon: Package },
 ];
+
+function SectionHeading({ children }: { children: React.ReactNode }) {
+  return (
+    <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-brand-text/45">
+      {children}
+    </h2>
+  );
+}
 
 export function DashboardClient({
   today,
@@ -53,6 +71,11 @@ export function DashboardClient({
         )
       : QUICK_LINKS;
 
+  const branchLabel =
+    selectedBranch === "all"
+      ? "All branches"
+      : (scopedBranches.find((b) => b.id === selectedBranch)?.name ?? "Branch");
+
   async function handleBranchChange(branchId: string) {
     setSelectedBranch(branchId);
     setLoading(true);
@@ -67,12 +90,12 @@ export function DashboardClient({
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-brand-text mb-1">Dashboard</h1>
-          <p className="text-brand-text/60">Overview for today - {today}</p>
+          <p className="text-brand-text/60">Overview for today — {today}</p>
         </div>
         {isAdminLike(role) && (
           <div className="w-full sm:w-64">
             <Select
-              label="Branch Filter"
+              label=""
               value={selectedBranch}
               onChange={(e) => handleBranchChange(e.target.value)}
               options={[
@@ -86,40 +109,74 @@ export function DashboardClient({
 
       {role === "staff" ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-          <StatCard label="Cash Received Today" value={stats.cashReceived} />
+          <StatCard label="Cash Received Today" value={stats.daily.cashReceived} />
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <StatCard label="Cash Received Today" value={stats.cashReceived} />
-          <StatCard label="Unpaid Today" value={stats.unpaid} variant="warning" />
-          <StatCard label="Total Sales Today" value={stats.totalSales} variant="success" />
-          <StatCard
-            label="Upcoming Schedules"
-            value={stats.upcomingSchedules}
-            isCurrency={false}
-          />
-        </div>
-      )}
+        <div className="space-y-8 mb-8">
+          <section>
+            <SectionHeading>Sales</SectionHeading>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <StatCard
+                label="Cash Received"
+                periods={periodValues(stats, (p) => p.cashReceived)}
+              />
+              <StatCard
+                label="Unpaid"
+                variant="warning"
+                periods={periodValues(stats, (p) => p.unpaid)}
+              />
+              <StatCard
+                label="Total Sales"
+                variant="success"
+                periods={periodValues(stats, (p) => p.totalSales)}
+              />
+            </div>
+            <p className="mt-4 text-sm text-brand-text/60">
+              <Link href="/admin/finance" className="font-medium text-brand-blue hover:underline">
+                View full finance overview
+              </Link>
+              {" "}— annual, all-time totals, and sales charts.
+            </p>
+          </section>
 
-      {isAdminLike(role) && stats.cashOnHand > 0 && (
-        <p className="mb-4 text-sm text-brand-text/60">
-          Cash on hand from today&apos;s daily report(s):{" "}
-          <span className="font-medium text-brand-text">
-            {formatCurrency(stats.cashOnHand)}
-          </span>
-          {" "}(physical count — may differ from cash received)
-        </p>
-      )}
-
-      {isAdminLike(role) && stats.lowStockCount > 0 && (
-        <div className="mb-8 rounded-xl bg-amber-50 border border-amber-200 px-5 py-4">
-          <p className="text-sm text-amber-800">
-            <strong>{stats.lowStockCount}</strong> inventory item
-            {stats.lowStockCount > 1 ? "s are" : " is"} running low.{" "}
-            <Link href="/admin/inventory" className="underline font-medium">
-              View inventory
-            </Link>
-          </p>
+          <section>
+            <SectionHeading>Inventory &amp; operations</SectionHeading>
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+              <Link href="/admin/inventory" className="block h-full">
+                <StatCard
+                  label="Total Quantity On Hand"
+                  subtitle={branchLabel}
+                  value={stats.inventoryTotalQuantity}
+                  isCurrency={false}
+                />
+              </Link>
+              <Link href="/admin/inventory" className="block h-full">
+                <StatCard
+                  label="Items Low In Stock"
+                  subtitle={branchLabel}
+                  value={stats.lowStockCount}
+                  isCurrency={false}
+                  variant={stats.lowStockCount > 0 ? "warning" : "default"}
+                />
+              </Link>
+              <Link href="/admin/inventory" className="block h-full">
+                <StatCard
+                  label="Tracked Inventory Records"
+                  subtitle={branchLabel}
+                  value={stats.inventoryRecordCount}
+                  isCurrency={false}
+                />
+              </Link>
+              <Link href="/admin/schedules" className="block h-full">
+                <StatCard
+                  label="Staff on Duty Today"
+                  subtitle="Pending & confirmed shifts"
+                  value={stats.staffOnDutyToday}
+                  isCurrency={false}
+                />
+              </Link>
+            </div>
+          </section>
         </div>
       )}
 

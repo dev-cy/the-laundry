@@ -1,0 +1,13 @@
+---
+description: Apply Supabase SQL migrations via dashboard
+globs: supabase/**/*
+alwaysApply: false
+---
+
+# Supabase migrations
+
+When you add or change files under `supabase/migrations/` or materially update `supabase/schema.sql`:
+
+1. Keep `supabase/schema.sql` and migration files in sync.
+2. Tell the user which migration files to run (filename order, oldest first).
+3. User applies SQL manually in **Supabase Dashboard → SQL Editor**.

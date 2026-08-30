@@ -48,6 +48,9 @@ export interface Transaction {
   amount: number;
   payment_status: "paid" | "unpaid" | "partial";
   payment_method: "cash" | "gcash" | "bank";
+  service_type: "regular" | "blankets" | "comforters";
+  weight_kg_whole: number;
+  weight_kg_frac: number;
   transaction_date: string;
   created_by: string | null;
   created_at: string;
@@ -72,17 +75,26 @@ export interface Schedule {
   branches?: Branch;
 }
 
+export interface InventoryCatalog {
+  id: string;
+  sku: string;
+  item_name: string;
+  unit: string;
+  low_stock_threshold: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface InventoryItem {
   id: string;
   branch_id: string;
-  item_name: string;
+  catalog_id: string;
   quantity: number;
-  unit: string;
-  low_stock_threshold: number;
   last_restocked: string | null;
   created_at: string;
   updated_at: string;
   branches?: Branch;
+  inventory_catalog?: InventoryCatalog;
 }
 
 export interface Staff {

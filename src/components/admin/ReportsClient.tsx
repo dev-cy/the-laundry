@@ -421,12 +421,12 @@ export function ReportsPageClient({
           <h1 className="text-2xl font-bold text-brand-text">Daily Reports</h1>
           <p className="text-brand-text/60">Cash reconciliation by branch</p>
         </div>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-end">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
           {canFilter && !formOpen && (
             <>
               <div className="w-full sm:w-52">
                 <Select
-                  label="Branch"
+                  label=""
                   value={branchFilter}
                   onChange={(e) => {
                     const value = e.target.value;
@@ -441,8 +441,9 @@ export function ReportsPageClient({
               </div>
               <div className="w-full sm:w-44">
                 <Input
-                  label="Date"
+                  label=""
                   type="date"
+                  className="h-10"
                   value={dateFilter}
                   onChange={(e) => {
                     const value = e.target.value;
@@ -454,13 +455,14 @@ export function ReportsPageClient({
             </>
           )}
           {formOpen ? (
-            <Button type="button" variant="secondary" onClick={closeForm}>
+            <Button type="button" variant="secondary" onClick={closeForm} className="h-10 shrink-0">
               <X className="w-4 h-4" />
               Close
             </Button>
           ) : (
             <Button
               type="button"
+              className="h-10 shrink-0"
               onClick={() => {
                 setEditing(null);
                 setShowForm(true);

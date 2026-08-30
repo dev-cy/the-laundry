@@ -7,6 +7,7 @@ import {
   CreditCard,
   FileText,
   LayoutDashboard,
+  LineChart,
   LogOut,
   Menu,
   Package,
@@ -21,6 +22,7 @@ import { roleLabel, type AppRole } from "@/lib/auth/roles";
 
 const NAV_ITEMS = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/admin/finance", label: "Finance", icon: LineChart },
   { href: "/admin/reports", label: "Reports", icon: FileText },
   { href: "/admin/transactions", label: "Transactions", icon: CreditCard },
   { href: "/admin/schedules", label: "Schedules", icon: Calendar },

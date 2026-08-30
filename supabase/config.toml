@@ -1,0 +1,7 @@
+# Supabase local config (SQL applied manually via Dashboard → SQL Editor)
+
+[db]
+major_version = 15
+
+[api]
+enabled = true

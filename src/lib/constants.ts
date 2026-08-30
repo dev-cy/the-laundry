@@ -18,6 +18,14 @@ export const DENOMINATIONS = [1, 5, 10, 20, 50, 100, 200, 500, 1000] as const;
 
 export type Denomination = (typeof DENOMINATIONS)[number];
 
+export const SERVICE_TYPES = [
+  { value: "regular", label: "Regular" },
+  { value: "blankets", label: "Blankets" },
+  { value: "comforters", label: "Comforters" },
+] as const;
+
+export type ServiceType = (typeof SERVICE_TYPES)[number]["value"];
+
 /** Stable IDs — must match supabase/schema.sql seed */
 export const DEFAULT_BRANCHES = [
   {

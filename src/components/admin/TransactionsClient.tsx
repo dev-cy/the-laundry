@@ -2,13 +2,29 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { formatCurrency, todayISO } from "@/lib/utils";
+import { formatCurrency, formatWeightKg, serviceTypeLabel, todayISO } from "@/lib/utils";
 import type { Branch, Transaction } from "@/lib/types";
-import { canDeleteEntries, type AppRole } from "@/lib/auth/roles";
+import { SERVICE_TYPES } from "@/lib/constants";
+import { canDeleteEntries, isAdminLike, type AppRole } from "@/lib/auth/roles";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Plus, Pencil, Trash2 } from "lucide-react";
+
+function emptyForm(branchId: string) {
+  return {
+    branch_id: branchId,
+    customer_name: "",
+    description: "",
+    amount: 0,
+    payment_status: "paid" as Transaction["payment_status"],
+    payment_method: "cash" as Transaction["payment_method"],
+    service_type: "regular" as Transaction["service_type"],
+    weight_kg_whole: 5,
+    weight_kg_frac: 0,
+    transaction_date: todayISO(),
+  };
+}
 
 export function TransactionsClient({
   branches,
@@ -28,29 +44,36 @@ export function TransactionsClient({
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [branchFilter, setBranchFilter] = useState("all");
+  const [loadingList, setLoadingList] = useState(false);
   const canDelete = canDeleteEntries(role);
+  const canFilter = isAdminLike(role);
 
-  const [form, setForm] = useState({
-    branch_id: lockedBranchId ?? branches[0]?.id ?? "",
-    customer_name: "",
-    description: "",
-    amount: 0,
-    payment_status: "paid" as Transaction["payment_status"],
-    payment_method: "cash" as Transaction["payment_method"],
-    transaction_date: todayISO(),
-  });
+  const [form, setForm] = useState(emptyForm(lockedBranchId ?? branches[0]?.id ?? ""));
+
+  async function loadTransactions(nextBranch = branchFilter, closeFormView = true) {
+    setLoadingList(true);
+    let query = supabase
+      .from("transactions")
+      .select("*, branches(name)")
+      .order("transaction_date", { ascending: false })
+      .limit(100);
+
+    const branchScope = lockedBranchId ?? (canFilter && nextBranch !== "all" ? nextBranch : null);
+    if (branchScope) query = query.eq("branch_id", branchScope);
+
+    const { data } = await query;
+    if (data) setTransactions(data as Transaction[]);
+    if (closeFormView) {
+      setShowForm(false);
+      setEditing(null);
+    }
+    setLoadingList(false);
+  }
 
   function openNew() {
     setEditing(null);
-    setForm({
-      branch_id: lockedBranchId ?? branches[0]?.id ?? "",
-      customer_name: "",
-      description: "",
-      amount: 0,
-      payment_status: "paid",
-      payment_method: "cash",
-      transaction_date: todayISO(),
-    });
+    setForm(emptyForm(lockedBranchId ?? branches[0]?.id ?? ""));
     setShowForm(true);
   }
 
@@ -63,23 +86,16 @@ export function TransactionsClient({
       amount: t.amount,
       payment_status: t.payment_status,
       payment_method: t.payment_method,
+      service_type: t.service_type ?? "regular",
+      weight_kg_whole: t.weight_kg_whole ?? 0,
+      weight_kg_frac: t.weight_kg_frac ?? 0,
       transaction_date: t.transaction_date,
     });
     setShowForm(true);
   }
 
   async function refresh() {
-    let query = supabase
-      .from("transactions")
-      .select("*, branches(name)")
-      .order("transaction_date", { ascending: false })
-      .limit(100);
-    if (lockedBranchId) query = query.eq("branch_id", lockedBranchId);
-
-    const { data } = await query;
-    if (data) setTransactions(data as Transaction[]);
-    setShowForm(false);
-    setEditing(null);
+    await loadTransactions(branchFilter, true);
   }
 
   async function handleDelete(t: Transaction) {
@@ -111,6 +127,8 @@ export function TransactionsClient({
       ...form,
       branch_id: lockedBranchId ?? form.branch_id,
       customer_name: form.customer_name || null,
+      weight_kg_whole: Math.max(0, form.weight_kg_whole),
+      weight_kg_frac: Math.min(9, Math.max(0, form.weight_kg_frac)),
     };
 
     const { error: saveError } = editing
@@ -159,15 +177,36 @@ export function TransactionsClient({
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-8">
+      <div className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-brand-text">Transactions</h1>
           <p className="text-brand-text/60">Manage payments and orders</p>
         </div>
-        <Button onClick={openNew}>
-          <Plus className="w-4 h-4" />
-          Add Transaction
-        </Button>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+          {canFilter && !showForm && (
+            <div className="w-full sm:w-52">
+              <Select
+                label=""
+                value={branchFilter}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setBranchFilter(value);
+                  void loadTransactions(value, false);
+                }}
+                options={[
+                  { value: "all", label: "All Branches" },
+                  ...branches.map((b) => ({ value: b.id, label: b.name })),
+                ]}
+              />
+            </div>
+          )}
+          {!showForm && (
+            <Button onClick={openNew} className="h-10 shrink-0">
+              <Plus className="w-4 h-4" />
+              Add Transaction
+            </Button>
+          )}
+        </div>
       </div>
 
       {showForm && (
@@ -229,6 +268,52 @@ export function TransactionsClient({
               ]}
             />
             <Select
+              label="Type of Service"
+              value={form.service_type}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  service_type: e.target.value as Transaction["service_type"],
+                })
+              }
+              options={SERVICE_TYPES.map((s) => ({ value: s.value, label: s.label }))}
+            />
+            <div className="flex flex-col gap-1">
+              <span className="text-sm font-medium text-brand-text">Weight (kg)</span>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={0}
+                  placeholder="0"
+                  value={form.weight_kg_whole || ""}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      weight_kg_whole: Math.max(0, parseInt(e.target.value, 10) || 0),
+                    })
+                  }
+                  className="h-10 flex-1 min-w-0 rounded-lg border border-brand-blue/20 bg-white px-4 text-sm text-center text-brand-text focus:outline-none focus:ring-2 focus:ring-brand-blue/40"
+                  aria-label="Kilograms whole"
+                />
+                <span className="text-brand-text/60 font-medium shrink-0">.</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={9}
+                  placeholder="0"
+                  value={form.weight_kg_frac || ""}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      weight_kg_frac: Math.min(9, Math.max(0, parseInt(e.target.value, 10) || 0)),
+                    })
+                  }
+                  className="h-10 flex-1 min-w-0 rounded-lg border border-brand-blue/20 bg-white px-4 text-sm text-center text-brand-text focus:outline-none focus:ring-2 focus:ring-brand-blue/40"
+                  aria-label="Kilograms decimal"
+                />
+              </div>
+            </div>
+            <Select
               label="Payment Method"
               value={form.payment_method}
               onChange={(e) =>
@@ -255,11 +340,11 @@ export function TransactionsClient({
         </div>
       )}
 
-      <div className="mb-8 rounded-xl border border-brand-blue/10 bg-white overflow-hidden">
-        <div className="px-4 py-3 bg-brand-light/30 border-b border-brand-blue/10">
+      <div className="mb-8 rounded-xl border border-brand-blue/10 bg-white overflow-x-auto">
+        <div className="px-4 py-3 bg-brand-light/30 border-b border-brand-blue/10 min-w-[640px]">
           <h2 className="text-sm font-semibold text-brand-text">Daily Summary</h2>
         </div>
-        <table className="w-full text-sm">
+        <table className="w-full min-w-[640px] text-sm">
           <thead className="bg-brand-light/10">
             <tr>
               <th className="text-left px-4 py-2 font-semibold">Date</th>
@@ -273,7 +358,11 @@ export function TransactionsClient({
             {dailySummary.length === 0 ? (
               <tr>
                 <td colSpan={5} className="px-4 py-6 text-center text-brand-text/50">
-                  No daily summary yet.
+                  {loadingList
+                    ? "Loading…"
+                    : branchFilter !== "all"
+                      ? "No transactions for this branch."
+                      : "No daily summary yet."}
                 </td>
               </tr>
             ) : (
@@ -293,13 +382,15 @@ export function TransactionsClient({
         </table>
       </div>
 
-      <div className="rounded-xl border border-brand-blue/10 bg-white overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="rounded-xl border border-brand-blue/10 bg-white overflow-x-auto">
+        <table className="w-full min-w-[1100px] text-sm">
           <thead className="bg-brand-light/30">
             <tr>
               <th className="text-left px-4 py-3 font-semibold">Date</th>
               <th className="text-left px-4 py-3 font-semibold">Branch</th>
               <th className="text-left px-4 py-3 font-semibold">Customer</th>
+              <th className="text-left px-4 py-3 font-semibold">Service</th>
+              <th className="text-right px-4 py-3 font-semibold">Weight</th>
               <th className="text-left px-4 py-3 font-semibold">Description</th>
               <th className="text-right px-4 py-3 font-semibold">Amount</th>
               <th className="text-center px-4 py-3 font-semibold">Status</th>
@@ -309,8 +400,12 @@ export function TransactionsClient({
           <tbody>
             {transactions.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-brand-text/50">
-                  No transactions yet.
+                <td colSpan={9} className="px-4 py-8 text-center text-brand-text/50">
+                  {loadingList
+                    ? "Loading transactions…"
+                    : branchFilter !== "all"
+                      ? "No transactions for this branch."
+                      : "No transactions yet."}
                 </td>
               </tr>
             ) : (
@@ -321,6 +416,10 @@ export function TransactionsClient({
                     {(t.branches as { name: string } | undefined)?.name ?? "—"}
                   </td>
                   <td className="px-4 py-3">{t.customer_name ?? "—"}</td>
+                  <td className="px-4 py-3">{serviceTypeLabel(t.service_type ?? "regular")}</td>
+                  <td className="px-4 py-3 text-right tabular-nums whitespace-nowrap">
+                    {formatWeightKg(t.weight_kg_whole ?? 0, t.weight_kg_frac ?? 0)}
+                  </td>
                   <td className="px-4 py-3">{t.description}</td>
                   <td className="px-4 py-3 text-right font-medium">
                     {formatCurrency(t.amount)}

@@ -6,9 +6,14 @@ import {
   getUserRole,
   type AppRole,
 } from "@/lib/auth/roles";
+import { isSameOriginRequest } from "@/lib/security";
 
 function unauthorized() {
   return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+}
+
+function forbiddenOrigin() {
+  return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 }
 
 function isValidRole(role: unknown): role is AppRole {
@@ -54,6 +59,8 @@ export async function GET() {
 }
 
 export async function DELETE(request: Request) {
+  if (!isSameOriginRequest(request)) return forbiddenOrigin();
+
   const supabase = await createClient();
   const {
     data: { user },
@@ -97,6 +104,8 @@ export async function DELETE(request: Request) {
 }
 
 export async function PATCH(request: Request) {
+  if (!isSameOriginRequest(request)) return forbiddenOrigin();
+
   const supabase = await createClient();
   const {
     data: { user },

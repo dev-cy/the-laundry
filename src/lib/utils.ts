@@ -55,3 +55,14 @@ export function countCustomersFromTransactions(
   }
   return named.size + unnamed;
 }
+
+export function formatWeightKg(whole: number, frac: number): string {
+  if (whole === 0 && frac === 0) return "—";
+  return `${whole}.${frac} kg`;
+}
+
+export function serviceTypeLabel(value: string): string {
+  if (value === "blankets") return "Blankets";
+  if (value === "comforters") return "Comforters";
+  return "Regular";
+}
