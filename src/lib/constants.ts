@@ -18,6 +18,12 @@ export const BUSINESS = {
 export const SOCIAL_SHARE = {
   image: "/social-share.jpg",
   imageAlt: "The Laundry — Wash · Dry · Fold. Three branches in Negros Occidental.",
+  /**
+   * Facebook's public default App ID. A Page URL (e.g. facebook.com/TheLaundryyy)
+   * has a Page ID, not an App ID — fb:app_id cannot be taken from the Page.
+   * Replace with your own ID from https://developers.facebook.com/apps/ if you create one.
+   */
+  facebookAppId: "966242223397117",
 } as const;
 
 /** Full-width homepage map (Google My Maps — all branches). */

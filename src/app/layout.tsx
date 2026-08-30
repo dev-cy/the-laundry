@@ -19,6 +19,7 @@ export const metadata: Metadata = {
     template: `%s — ${BUSINESS.name}`,
   },
   description: siteDescription,
+  facebook: { appId: SOCIAL_SHARE.facebookAppId },
   openGraph: {
     type: "website",
     locale: "en_PH",
