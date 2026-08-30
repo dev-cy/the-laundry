@@ -82,7 +82,9 @@ export default async function HomePage() {
           <p className="mt-3 text-sm font-medium tracking-[0.2em] text-brand-blue sm:text-base">
             {BUSINESS.tagline}
           </p>
-          <p className="mt-6 max-w-xl text-lg text-brand-text/80">{BUSINESS.bio}</p>
+          <p className="mt-6 max-w-xl text-lg text-brand-text/80">
+            {BUSINESS.bio}
+          </p>
 
           <div className="mt-8 flex flex-wrap items-center justify-center gap-6 text-sm text-brand-text/80">
             <span className="flex items-center gap-2">
@@ -140,7 +142,8 @@ export default async function HomePage() {
             Our Branches
           </h2>
           <p className="text-center text-brand-text/60 mb-12">
-            Three convenient locations to serve you
+            Three convenient locations in Southern Negros Occidental to serve
+            you.
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
