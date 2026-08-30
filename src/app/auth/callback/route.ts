@@ -1,19 +1,20 @@
 import { createClient } from "@/lib/supabase/server";
-import { needsPasswordSetup } from "@/lib/auth/roles";
+import { shouldRedirectToCreatePassword } from "@/lib/auth/hash-callback";
+import { markPasswordSetupRequired } from "@/app/auth/actions";
 import { sanitizeNextPath } from "@/lib/security";
 import type { EmailOtpType, User } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 
-function redirectAfterAuth(
+async function redirectAfterAuth(
   origin: string,
   type: string | null,
   next: string,
   user: User | null
-): NextResponse {
-  if (needsPasswordSetup(user) || type === "recovery") {
-    return NextResponse.redirect(`${origin}/create-password`);
-  }
-  if (type === "signup" || type === "invite") {
+): Promise<NextResponse> {
+  if (shouldRedirectToCreatePassword(user, type)) {
+    if (type === "invite" || type === "signup") {
+      await markPasswordSetupRequired();
+    }
     return NextResponse.redirect(`${origin}/create-password`);
   }
   return NextResponse.redirect(`${origin}${next}`);

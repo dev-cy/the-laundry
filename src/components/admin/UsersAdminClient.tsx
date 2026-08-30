@@ -38,7 +38,7 @@ export function UsersAdminClient() {
   const [error, setError] = useState<string | null>(null);
   const [roleDrafts, setRoleDrafts] = useState<Record<string, AppRole>>({});
   const [branchDrafts, setBranchDrafts] = useState<Record<string, string>>({});
-  const [savingUserId, setSavingUserId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<AppRole>("staff");
@@ -55,8 +55,20 @@ export function UsersAdminClient() {
     remaining: remainingUsers,
   } = useLoadMore(users);
 
-  async function fetchUsers() {
-    setLoading(true);
+  function isDirty(user: ListedUser): boolean {
+    const locked = user.role === "super_admin" && currentUserRole !== "super_admin";
+    if (locked) return false;
+    const role = roleDrafts[user.id] ?? user.role;
+    const branch = branchDrafts[user.id] ?? "";
+    const savedBranch = user.branch_id ?? "";
+    if (role !== user.role) return true;
+    return role === "staff" && branch !== savedBranch;
+  }
+
+  const dirtyUsers = users.filter(isDirty);
+
+  async function fetchUsers(options?: { silent?: boolean }) {
+    if (!options?.silent) setLoading(true);
     setError(null);
     const res = await fetch("/api/admin/users", { cache: "no-store" });
     const data = (await res.json()) as {
@@ -86,28 +98,46 @@ export function UsersAdminClient() {
     fetchUsers();
   }, []);
 
-  async function saveRole(userId: string) {
-    const role = roleDrafts[userId];
-    if (!role) return;
-    const branchId = branchDrafts[userId] || null;
-    if (role === "staff" && !branchId) {
-      setError("Please assign a branch when role is Staff.");
-      return;
+  async function saveEdits() {
+    const edits = users.filter(isDirty);
+    if (edits.length === 0) return;
+
+    for (const u of edits) {
+      const role = roleDrafts[u.id];
+      const branchId = role === "staff" ? branchDrafts[u.id] || null : null;
+      if (role === "staff" && !branchId) {
+        setError(`Please assign a branch for ${u.email}.`);
+        return;
+      }
     }
-    setSavingUserId(userId);
+
+    setSaving(true);
     setError(null);
-    const res = await fetch("/api/admin/users", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId, role, branchId }),
-    });
-    const data = (await res.json()) as { error?: string };
-    setSavingUserId(null);
-    if (!res.ok) {
-      setError(data.error ?? "Failed to update role.");
-      return;
+    setInviteMessage(null);
+
+    for (const u of edits) {
+      const role = roleDrafts[u.id];
+      if (!role) continue;
+      const branchId = role === "staff" ? branchDrafts[u.id] || null : null;
+      const res = await fetch("/api/admin/users", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: u.id, role, branchId }),
+      });
+      const data = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        setSaving(false);
+        setError(data.error ?? `Failed to update ${u.email}.`);
+        await fetchUsers({ silent: true });
+        return;
+      }
     }
-    await fetchUsers();
+
+    setSaving(false);
+    setInviteMessage(
+      edits.length === 1 ? "Updated 1 user." : `Updated ${edits.length} users.`
+    );
+    await fetchUsers({ silent: true });
   }
 
   async function inviteUser(e: React.FormEvent) {
@@ -272,6 +302,22 @@ export function UsersAdminClient() {
           Admin role or delete users.
         </p>
       )}
+      <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm text-brand-text/60">
+          {dirtyUsers.length === 0
+            ? "No unsaved changes."
+            : dirtyUsers.length === 1
+              ? "1 unsaved change."
+              : `${dirtyUsers.length} unsaved changes.`}
+        </p>
+        <Button
+          type="button"
+          disabled={dirtyUsers.length === 0 || saving || Boolean(deletingUserId)}
+          onClick={() => void saveEdits()}
+        >
+          {saving ? "Saving..." : "Save changes"}
+        </Button>
+      </div>
       <div className="rounded-xl border border-brand-blue/10 bg-white overflow-x-auto">
         <table className="w-full min-w-[980px] text-sm">
           <thead className="bg-brand-light/30">
@@ -282,13 +328,16 @@ export function UsersAdminClient() {
               </th>
               <th className="text-left px-4 py-3 font-semibold">Role</th>
               <th className="text-left px-4 py-3 font-semibold">Assigned Branch (Staff)</th>
-              <th className="px-4 py-3" />
+              {canDeleteUsers && <th className="px-4 py-3" />}
             </tr>
           </thead>
           <tbody>
             {users.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-brand-text/50">
+                <td
+                  colSpan={canDeleteUsers ? 5 : 4}
+                  className="px-4 py-8 text-center text-brand-text/50"
+                >
                   No users found.
                 </td>
               </tr>
@@ -310,13 +359,14 @@ export function UsersAdminClient() {
                       <Select
                         label=""
                         value={roleDrafts[u.id] ?? u.role}
-                        disabled={locked}
-                        onChange={(e) =>
+                        disabled={locked || saving}
+                        onChange={(e) => {
+                          setInviteMessage(null);
                           setRoleDrafts((prev) => ({
                             ...prev,
                             [u.id]: e.target.value as AppRole,
-                          }))
-                        }
+                          }));
+                        }}
                         options={roleOptionsFor(u)}
                       />
                     </td>
@@ -325,10 +375,11 @@ export function UsersAdminClient() {
                         <Select
                           label=""
                           value={branchDrafts[u.id] ?? ""}
-                          disabled={locked}
-                          onChange={(e) =>
-                            setBranchDrafts((prev) => ({ ...prev, [u.id]: e.target.value }))
-                          }
+                          disabled={locked || saving}
+                          onChange={(e) => {
+                            setInviteMessage(null);
+                            setBranchDrafts((prev) => ({ ...prev, [u.id]: e.target.value }));
+                          }}
                           options={[
                             { value: "", label: "Select branch" },
                             ...branches.map((b) => ({ value: b.id, label: b.name })),
@@ -340,31 +391,25 @@ export function UsersAdminClient() {
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-2">
-                        <Button
-                          type="button"
-                          size="sm"
-                          disabled={locked || savingUserId === u.id || deletingUserId === u.id}
-                          onClick={() => saveRole(u.id)}
-                        >
-                          {savingUserId === u.id ? "Saving..." : "Save"}
-                        </Button>
-                        {canDeleteUsers && !isSelf && (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="danger"
-                            disabled={deletingUserId === u.id || savingUserId === u.id}
-                            onClick={() => deleteUser(u)}
-                            aria-label={`Delete ${u.email}`}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                            {deletingUserId === u.id ? "Deleting..." : "Delete"}
-                          </Button>
-                        )}
-                      </div>
-                    </td>
+                    {canDeleteUsers && (
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-end">
+                          {!isSelf && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="danger"
+                              disabled={deletingUserId === u.id || saving}
+                              onClick={() => deleteUser(u)}
+                              aria-label={`Delete ${u.email}`}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                              {deletingUserId === u.id ? "Deleting..." : "Delete"}
+                            </Button>
+                          )}
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 );
               })

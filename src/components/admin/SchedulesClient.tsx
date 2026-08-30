@@ -79,36 +79,21 @@ export function SchedulesClient({
 
   const selectableStaff = useMemo(
     () =>
-      staff
+      [...staff]
+        .sort((a, b) => a.name.localeCompare(b.name))
         .map((member) => ({
           value: member.name,
-          label: member.name,
-          phone: member.phone_number ?? "",
+          label: `${member.name} (${branchNameById[member.branch_id] ?? "Unassigned"})`,
           branch_id: member.branch_id,
-          inSelectedBranch: member.branch_id === form.branch_id,
-          branchName: branchNameById[member.branch_id] ?? "Unknown branch",
-        }))
-        .sort((a, b) => {
-          if (a.inSelectedBranch !== b.inSelectedBranch) {
-            return a.inSelectedBranch ? -1 : 1;
-          }
-          return a.label.localeCompare(b.label);
-        })
-        .map((member) => ({
-          value: member.value,
-          label: member.inSelectedBranch
-            ? `${member.value} - Assigned (${member.branchName})`
-            : `${member.value} - Other Branch (${member.branchName})`,
-          phone: member.phone,
         })),
-    [staff, form.branch_id, branchNameById]
+    [staff, branchNameById]
   );
 
   function openNew() {
     setEditing(null);
     setError(null);
     setForm({
-      branch_id: branches[0]?.id ?? "",
+      branch_id: "",
       customer_name: "",
       service_type: "pickup",
       scheduled_time: "07:00",
@@ -132,6 +117,15 @@ export function SchedulesClient({
     });
     setSelectedDates([s.scheduled_date]);
     setShowForm(true);
+  }
+
+  function handleStaffChange(staffName: string) {
+    const member = staff.find((row) => row.name === staffName);
+    setForm((current) => ({
+      ...current,
+      customer_name: staffName,
+      branch_id: member?.branch_id ?? current.branch_id,
+    }));
   }
 
   function handleShiftChange(serviceType: Schedule["service_type"]) {
@@ -183,6 +177,10 @@ export function SchedulesClient({
     }
     if (!form.customer_name.trim()) {
       setError("Select a staff member.");
+      return;
+    }
+    if (!form.branch_id) {
+      setError("Select a branch.");
       return;
     }
 
@@ -298,16 +296,9 @@ export function SchedulesClient({
 
             <form onSubmit={handleSubmit} className="space-y-4 p-5">
               <Select
-                label="Branch"
-                value={form.branch_id}
-                onChange={(e) => setForm({ ...form, branch_id: e.target.value })}
-                options={branches.map((b) => ({ value: b.id, label: b.name }))}
-              />
-
-              <Select
                 label="Staff"
                 value={form.customer_name}
-                onChange={(e) => setForm({ ...form, customer_name: e.target.value })}
+                onChange={(e) => handleStaffChange(e.target.value)}
                 options={[
                   {
                     value: "",
@@ -317,6 +308,22 @@ export function SchedulesClient({
                     value: member.value,
                     label: member.label,
                   })),
+                ]}
+                required
+              />
+
+              <Select
+                label="Branch"
+                value={form.branch_id}
+                onChange={(e) => setForm({ ...form, branch_id: e.target.value })}
+                options={[
+                  {
+                    value: "",
+                    label: form.customer_name
+                      ? "Select branch"
+                      : "Select staff first",
+                  },
+                  ...branches.map((b) => ({ value: b.id, label: b.name })),
                 ]}
                 required
               />

@@ -5,7 +5,7 @@ import { SITE_HEADER_OFFSET_CLASS, SiteHeader } from "@/components/SiteHeader";
 import { termsAndConditions } from "@/lib/legal/terms-and-conditions";
 
 export const metadata: Metadata = {
-  title: "Terms and Conditions — The Laundry",
+  title: "Terms and Conditions",
   description:
     "Terms and conditions for laundry services at The Laundry branches in Negros Occidental, including claims, liability, and customer responsibilities.",
 };

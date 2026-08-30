@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { markPasswordSetupRequired } from "@/app/auth/actions";
 import {
   getAuthFlowType,
   getPostHashAuthPath,
@@ -58,7 +59,11 @@ export function AuthHashHandler() {
         return;
       }
 
-      window.location.replace(getPostHashAuthPath(user, type));
+      const dest = getPostHashAuthPath(user, type);
+      if (type === "invite" || type === "signup") {
+        await markPasswordSetupRequired();
+      }
+      window.location.replace(dest);
     })();
   }, []);
 

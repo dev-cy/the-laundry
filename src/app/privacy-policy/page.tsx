@@ -5,7 +5,7 @@ import { SITE_HEADER_OFFSET_CLASS, SiteHeader } from "@/components/SiteHeader";
 import { privacyPolicy } from "@/lib/legal/privacy-policy";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy — The Laundry",
+  title: "Privacy Policy",
   description:
     "How The Laundry collects, uses, and protects personal information in compliance with the Philippine Data Privacy Act of 2012.",
 };

@@ -11,6 +11,26 @@ export async function signOut() {
   redirect("/login");
 }
 
+/** Keep invite/signup users on /create-password until they save a password. */
+export async function markPasswordSetupRequired(): Promise<void> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user || needsPasswordSetup(user)) return;
+
+  try {
+    const admin = createAdminClient();
+    const appMeta = user.app_metadata ?? {};
+    await admin.auth.admin.updateUserById(user.id, {
+      app_metadata: { ...appMeta, needs_password_setup: true },
+    });
+  } catch {
+    // Password page still works; middleware just won't force it.
+  }
+}
+
 export async function setInitialPassword(
   password: string,
   confirmPassword: string
@@ -36,7 +56,7 @@ export async function setInitialPassword(
     return { error: updateError.message };
   }
 
-  if (needsPasswordSetup(user)) {
+  try {
     const admin = createAdminClient();
     const appMeta = user.app_metadata ?? {};
     const { error: metaError } = await admin.auth.admin.updateUserById(user.id, {
@@ -45,6 +65,8 @@ export async function setInitialPassword(
     if (metaError) {
       return { error: metaError.message };
     }
+  } catch {
+    // Password is already saved in Supabase Auth.
   }
 
   return {};

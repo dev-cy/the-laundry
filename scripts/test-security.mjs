@@ -75,10 +75,8 @@ assert("blocks backslash", sanitizeNextPath("/\\evil") === "/admin");
 assert("default", sanitizeNextPath(null) === "/admin");
 
 function getPostHashAuthPath(user, type) {
-  if (user?.app_metadata?.needs_password_setup === true) {
-    return "/create-password";
-  }
-  if (type === "recovery") {
+  if (user?.app_metadata?.needs_password_setup === true) return "/create-password";
+  if (type === "recovery" || type === "invite" || type === "signup") {
     return "/create-password";
   }
   return "/admin";
@@ -95,8 +93,12 @@ assert(
     "/create-password"
 );
 assert(
-  "spoofed type ignored without flag",
-  getPostHashAuthPath({ app_metadata: {} }, "invite") === "/admin"
+  "invite -> create-password",
+  getPostHashAuthPath({ app_metadata: {} }, "invite") === "/create-password"
+);
+assert(
+  "signup -> create-password",
+  getPostHashAuthPath({ app_metadata: {} }, "signup") === "/create-password"
 );
 assert("recovery -> create-password", getPostHashAuthPath(null, "recovery") === "/create-password");
 assert("magiclink -> admin", getPostHashAuthPath({ app_metadata: {} }, "magiclink") === "/admin");

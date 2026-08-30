@@ -2,18 +2,21 @@ import type { User } from "@supabase/supabase-js";
 
 type AuthUserLike = Pick<User, "app_metadata"> | null;
 
-/** Post-auth destination after hash/callback — uses server metadata, not URL type alone. */
+/** Invite, first signup, and recovery must set a password in Supabase Auth. */
+export function shouldRedirectToCreatePassword(
+  user: AuthUserLike,
+  type: string | null
+): boolean {
+  if (user?.app_metadata?.needs_password_setup === true) return true;
+  return type === "recovery" || type === "invite" || type === "signup";
+}
+
+/** Post-auth destination after hash/callback. */
 export function getPostHashAuthPath(
   user: AuthUserLike,
   type: string | null
 ): "/create-password" | "/admin" {
-  if (user?.app_metadata?.needs_password_setup === true) {
-    return "/create-password";
-  }
-  if (type === "recovery") {
-    return "/create-password";
-  }
-  return "/admin";
+  return shouldRedirectToCreatePassword(user, type) ? "/create-password" : "/admin";
 }
 
 export function parseAuthHashParams(hash: string): URLSearchParams {
