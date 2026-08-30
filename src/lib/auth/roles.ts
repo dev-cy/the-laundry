@@ -43,6 +43,10 @@ export function canAccessAdminPath(role: AppRole, pathname: string): boolean {
   );
 }
 
+export function needsPasswordSetup(user: User | null): boolean {
+  return user?.app_metadata?.needs_password_setup === true;
+}
+
 export function roleLabel(role: AppRole): string {
   if (role === "super_admin") return "Super Admin";
   if (role === "staff") return "Staff";

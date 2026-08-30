@@ -74,6 +74,48 @@ assert("blocks absolute url", sanitizeNextPath("https://evil.com") === "/admin")
 assert("blocks backslash", sanitizeNextPath("/\\evil") === "/admin");
 assert("default", sanitizeNextPath(null) === "/admin");
 
+function getPostHashAuthPath(user, type) {
+  if (user?.app_metadata?.needs_password_setup === true) {
+    return "/create-password";
+  }
+  if (type === "recovery") {
+    return "/create-password";
+  }
+  return "/admin";
+}
+
+function hasAuthHashTokens(params) {
+  return Boolean(params.get("access_token") && params.get("refresh_token"));
+}
+
+console.log("\ngetPostHashAuthPath:");
+assert(
+  "needs_password_setup -> create-password",
+  getPostHashAuthPath({ app_metadata: { needs_password_setup: true } }, null) ===
+    "/create-password"
+);
+assert(
+  "spoofed type ignored without flag",
+  getPostHashAuthPath({ app_metadata: {} }, "invite") === "/admin"
+);
+assert("recovery -> create-password", getPostHashAuthPath(null, "recovery") === "/create-password");
+assert("magiclink -> admin", getPostHashAuthPath({ app_metadata: {} }, "magiclink") === "/admin");
+assert("null user -> admin", getPostHashAuthPath(null, null) === "/admin");
+
+console.log("\nhasAuthHashTokens:");
+assert(
+  "requires both tokens",
+  hasAuthHashTokens(new URLSearchParams("access_token=a&refresh_token=b"))
+);
+assert(
+  "rejects access_token only",
+  !hasAuthHashTokens(new URLSearchParams("access_token=a"))
+);
+assert(
+  "rejects empty",
+  !hasAuthHashTokens(new URLSearchParams(""))
+);
+
 console.log("\nisSameOriginRequest:");
 process.env.NEXT_PUBLIC_SITE_URL = "http://localhost:3000";
 assert(

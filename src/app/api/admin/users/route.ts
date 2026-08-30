@@ -94,6 +94,7 @@ export async function POST(request: Request) {
         ...appMeta,
         role,
         branch_id: role === "staff" ? branchId : null,
+        needs_password_setup: true,
       },
       user_metadata: userMeta,
     });

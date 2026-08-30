@@ -84,6 +84,8 @@ Set `NEXT_PUBLIC_SITE_URL` to match where the app runs:
 
 Invite and magic-link emails use `NEXT_PUBLIC_SITE_URL` to build the verification link (`/auth/callback?type=invite`). After clicking the link, invited users land on **Create Password**, then the admin dashboard.
 
+If an invite still opens the homepage with `#access_token=` in the address bar, refresh after this handler is deployed (or click **Accept invitation** again). The Facebook icon in the header is the public page, not login.
+
 **Inviting users**
 
 1. Enable **Email** provider under Authentication → Providers

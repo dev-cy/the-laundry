@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist } from "next/font/google";
+import { AuthHashHandler } from "@/components/AuthHashHandler";
 import { BUSINESS, SOCIAL_SHARE } from "@/lib/constants";
 import { getSiteUrl } from "@/lib/site-url";
 import "./globals.css";
@@ -54,6 +55,7 @@ export default function RootLayout({
       data-scroll-behavior="smooth"
     >
       <body className="min-h-full flex flex-col bg-white text-brand-text">
+        <AuthHashHandler />
         {children}
       </body>
     </html>

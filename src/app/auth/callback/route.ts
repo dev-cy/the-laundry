@@ -1,17 +1,19 @@
 import { createClient } from "@/lib/supabase/server";
+import { needsPasswordSetup } from "@/lib/auth/roles";
 import { sanitizeNextPath } from "@/lib/security";
-import type { EmailOtpType } from "@supabase/supabase-js";
+import type { EmailOtpType, User } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 
 function redirectAfterAuth(
   origin: string,
   type: string | null,
-  next: string
+  next: string,
+  user: User | null
 ): NextResponse {
-  if (type === "signup" || type === "invite") {
+  if (needsPasswordSetup(user) || type === "recovery") {
     return NextResponse.redirect(`${origin}/create-password`);
   }
-  if (type === "recovery") {
+  if (type === "signup" || type === "invite") {
     return NextResponse.redirect(`${origin}/create-password`);
   }
   return NextResponse.redirect(`${origin}${next}`);
@@ -29,7 +31,10 @@ export async function GET(request: Request) {
   if (code) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) {
-      return redirectAfterAuth(origin, type, next);
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      return redirectAfterAuth(origin, type, next, user);
     }
   }
 
@@ -39,7 +44,10 @@ export async function GET(request: Request) {
       type: type as EmailOtpType,
     });
     if (!error) {
-      return redirectAfterAuth(origin, type, next);
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      return redirectAfterAuth(origin, type, next, user);
     }
   }
 

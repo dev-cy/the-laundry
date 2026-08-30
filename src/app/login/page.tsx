@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { getAuthCallbackUrl } from "@/lib/site-url";
 import { Logo } from "@/components/Logo";
@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 
 export default function LoginPage() {
+  const [authLinkError, setAuthLinkError] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -15,6 +16,11 @@ export default function LoginPage() {
   const [message, setMessage] = useState<string | null>(null);
 
   const supabase = createClient();
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setAuthLinkError(params.get("error") === "auth");
+  }, []);
 
   async function handleEmailLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -67,6 +73,12 @@ export default function LoginPage() {
           <p className="text-sm text-center text-brand-text/60 mb-8">
             Access the admin dashboard
           </p>
+
+          {authLinkError && !error && (
+            <div className="mb-4 rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
+              That sign-in link is invalid or has expired. Sign in below or ask an admin to send a new invite.
+            </div>
+          )}
 
           {error && (
             <div className="mb-4 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-600">

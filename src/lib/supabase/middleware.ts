@@ -1,6 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { canAccessAdminPath, getUserRole } from "@/lib/auth/roles";
+import { canAccessAdminPath, getUserRole, needsPasswordSetup } from "@/lib/auth/roles";
 
 export async function updateSession(request: NextRequest) {
   // OAuth may land on site root with ?code= — forward to the callback route
@@ -44,6 +44,23 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  if (!user && request.nextUrl.pathname === "/create-password") {
+    const url = request.nextUrl.clone();
+    url.pathname = "/login";
+    return NextResponse.redirect(url);
+  }
+
+  if (
+    user &&
+    needsPasswordSetup(user) &&
+    request.nextUrl.pathname !== "/create-password" &&
+    !request.nextUrl.pathname.startsWith("/auth/")
+  ) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/create-password";
+    return NextResponse.redirect(url);
+  }
+
   if (user && request.nextUrl.pathname.startsWith("/admin")) {
     const role = getUserRole(user);
     if (!canAccessAdminPath(role, request.nextUrl.pathname)) {
@@ -55,7 +72,7 @@ export async function updateSession(request: NextRequest) {
 
   if (user && request.nextUrl.pathname === "/login") {
     const url = request.nextUrl.clone();
-    url.pathname = "/admin";
+    url.pathname = needsPasswordSetup(user) ? "/create-password" : "/admin";
     return NextResponse.redirect(url);
   }
 

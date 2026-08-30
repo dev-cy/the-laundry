@@ -1,13 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { setInitialPassword } from "@/app/auth/actions";
 import { Logo } from "@/components/Logo";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 
 export default function CreatePasswordPage() {
-  const supabase = createClient();
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -18,23 +17,13 @@ export default function CreatePasswordPage() {
     e.preventDefault();
     setError(null);
     setMessage(null);
-
-    if (password.length < 6) {
-      setError("Password must be at least 6 characters.");
-      return;
-    }
-
-    if (password !== confirmPassword) {
-      setError("Passwords do not match.");
-      return;
-    }
-
     setLoading(true);
-    const { error: updateError } = await supabase.auth.updateUser({ password });
+
+    const result = await setInitialPassword(password, confirmPassword);
     setLoading(false);
 
-    if (updateError) {
-      setError(updateError.message);
+    if (result.error) {
+      setError(result.error);
       return;
     }
 
