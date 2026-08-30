@@ -37,7 +37,8 @@ export function StatCard({
   return (
     <div
       className={cn(
-        "flex h-full min-h-[220px] flex-col rounded-xl border p-5 shadow-sm",
+        "flex flex-col rounded-xl border shadow-sm",
+        periods ? "h-full min-h-[220px] p-5" : "p-4",
         variantStyles[variant]
       )}
     >
@@ -66,7 +67,7 @@ export function StatCard({
           </dl>
         </>
       ) : (
-        <p className={cn("mt-auto pt-4 text-3xl font-bold tracking-tight tabular-nums", valueClass)}>
+        <p className={cn("mt-1.5 text-2xl font-bold tracking-tight tabular-nums", valueClass)}>
           {formatValue(value ?? 0)}
         </p>
       )}

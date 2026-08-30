@@ -24,6 +24,21 @@ export type FinanceStats = DashboardStats & {
 
 type TxRow = { amount: number; payment_status: string; transaction_date: string };
 
+function parseIsoDate(iso: string): { year: number; month: number; day: number } {
+  const [year, month, day] = iso.split("-").map(Number);
+  return { year, month, day };
+}
+
+function formatIsoDate(year: number, month: number, day: number): string {
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function addDaysIso(iso: string, days: number): string {
+  const { year, month, day } = parseIsoDate(iso);
+  const next = new Date(year, month - 1, day + days);
+  return formatIsoDate(next.getFullYear(), next.getMonth() + 1, next.getDate());
+}
+
 function monthLabel(year: number, month: number): string {
   return new Date(year, month - 1, 1).toLocaleDateString("en-PH", {
     month: "short",
@@ -32,8 +47,7 @@ function monthLabel(year: number, month: number): string {
 }
 
 function dayLabel(date: string): string {
-  const day = new Date(`${date}T00:00:00`).getDate();
-  return String(day);
+  return String(parseIsoDate(date).day);
 }
 
 function aggregateByDate(rows: TxRow[]): Map<string, PeriodTotals> {
@@ -60,17 +74,17 @@ function aggregateByDate(rows: TxRow[]): Map<string, PeriodTotals> {
 function buildDailyChart(rows: TxRow[], monthStart: string, today: string): ChartPoint[] {
   const byDate = aggregateByDate(rows);
   const points: ChartPoint[] = [];
-  const start = new Date(`${monthStart}T00:00:00`);
-  const end = new Date(`${today}T00:00:00`);
+  let cursor = monthStart;
 
-  for (let cursor = new Date(start); cursor <= end; cursor.setDate(cursor.getDate() + 1)) {
-    const iso = cursor.toISOString().slice(0, 10);
-    const totals = byDate.get(iso) ?? { totalSales: 0, unpaid: 0, cashReceived: 0 };
+  while (cursor <= today) {
+    const totals = byDate.get(cursor) ?? { totalSales: 0, unpaid: 0, cashReceived: 0 };
     points.push({
-      date: iso,
-      label: dayLabel(iso),
+      date: cursor,
+      label: dayLabel(cursor),
       ...totals,
     });
+    if (cursor === today) break;
+    cursor = addDaysIso(cursor, 1);
   }
   return points;
 }

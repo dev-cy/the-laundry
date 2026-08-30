@@ -8,7 +8,10 @@ import { canDeleteEntries, type AppRole } from "@/lib/auth/roles";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { DateMultiPicker } from "@/components/ui/DateMultiPicker";
+import { Plus, Pencil, Trash2, X } from "lucide-react";
+import { useLoadMore } from "@/lib/use-load-more";
+import { LoadMoreFooter } from "@/components/ui/LoadMoreFooter";
 import {
   addMonths,
   eachDayOfInterval,
@@ -41,19 +44,33 @@ export function SchedulesClient({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const canDelete = canDeleteEntries(role);
+  const {
+    visible: visibleSchedules,
+    hasMore: hasMoreSchedules,
+    loadMore: loadMoreSchedules,
+    remaining: remainingSchedules,
+  } = useLoadMore(schedules);
   const [calendarMonth, setCalendarMonth] = useState(startOfMonth(new Date()));
   const [selectedCalendarDate, setSelectedCalendarDate] = useState<string | null>(null);
 
   const [form, setForm] = useState({
     branch_id: branches[0]?.id ?? "",
     customer_name: "",
-    customer_phone: "",
     service_type: "pickup" as Schedule["service_type"],
-    scheduled_date: todayISO(),
     scheduled_time: "07:00",
     scheduled_time_out: "16:00",
     notes: "",
   });
+  const [selectedDates, setSelectedDates] = useState<string[]>([todayISO()]);
+
+  const shiftPresets: Record<
+    Schedule["service_type"],
+    { timeIn: string; timeOut: string }
+  > = {
+    pickup: { timeIn: "07:00", timeOut: "16:00" },
+    delivery: { timeIn: "13:00", timeOut: "21:00" },
+    both: { timeIn: "07:00", timeOut: "21:00" },
+  };
 
   const branchNameById = useMemo(
     () => Object.fromEntries(branches.map((branch) => [branch.id, branch.name])),
@@ -89,32 +106,42 @@ export function SchedulesClient({
 
   function openNew() {
     setEditing(null);
+    setError(null);
     setForm({
       branch_id: branches[0]?.id ?? "",
       customer_name: "",
-      customer_phone: "",
       service_type: "pickup",
-      scheduled_date: todayISO(),
       scheduled_time: "07:00",
       scheduled_time_out: "16:00",
       notes: "",
     });
+    setSelectedDates([todayISO()]);
     setShowForm(true);
   }
 
   function openEdit(s: Schedule) {
     setEditing(s);
+    setError(null);
     setForm({
       branch_id: s.branch_id,
       customer_name: s.customer_name,
-      customer_phone: s.customer_phone ?? "",
       service_type: s.service_type,
-      scheduled_date: s.scheduled_date,
       scheduled_time: s.scheduled_time ?? "07:00",
       scheduled_time_out: s.scheduled_time_out ?? "16:00",
       notes: s.notes ?? "",
     });
+    setSelectedDates([s.scheduled_date]);
     setShowForm(true);
+  }
+
+  function handleShiftChange(serviceType: Schedule["service_type"]) {
+    const preset = shiftPresets[serviceType];
+    setForm((current) => ({
+      ...current,
+      service_type: serviceType,
+      scheduled_time: preset.timeIn,
+      scheduled_time_out: preset.timeOut,
+    }));
   }
 
   async function refresh() {
@@ -150,20 +177,49 @@ export function SchedulesClient({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (selectedDates.length === 0) {
+      setError("Select at least one date.");
+      return;
+    }
+    if (!form.customer_name.trim()) {
+      setError("Select a staff member.");
+      return;
+    }
+
     setSaving(true);
     setError(null);
 
-    const payload = {
-      ...form,
-      customer_phone: form.customer_phone || null,
+    const staffMember = staff.find((member) => member.name === form.customer_name);
+    const basePayload = {
+      branch_id: form.branch_id,
+      staff_id: staffMember?.id ?? null,
+      customer_name: form.customer_name.trim(),
+      customer_phone: staffMember?.phone_number ?? null,
+      service_type: form.service_type,
       scheduled_time: form.scheduled_time || "07:00",
       scheduled_time_out: form.scheduled_time_out || "16:00",
-      notes: form.notes || null,
+      notes: form.notes.trim() || null,
     };
 
-    const { error: saveError } = editing
-      ? await supabase.from("schedules").update(payload).eq("id", editing.id)
-      : await supabase.from("schedules").insert(payload);
+    if (editing) {
+      const { error: saveError } = await supabase
+        .from("schedules")
+        .update({ ...basePayload, scheduled_date: selectedDates[0] })
+        .eq("id", editing.id);
+      setSaving(false);
+      if (saveError) {
+        setError(saveError.message);
+      } else {
+        refresh();
+      }
+      return;
+    }
+
+    const rows = selectedDates.map((scheduled_date) => ({
+      ...basePayload,
+      scheduled_date,
+    }));
+    const { error: saveError } = await supabase.from("schedules").insert(rows);
 
     setSaving(false);
     if (saveError) {
@@ -211,98 +267,120 @@ export function SchedulesClient({
       </div>
 
       {showForm && (
-        <div className="mb-8 rounded-xl border border-brand-blue/10 bg-white p-6 shadow-sm">
-          <h2 className="text-lg font-semibold mb-4">
-            {editing ? "Edit Schedule" : "New Schedule"}
-          </h2>
-          {error && (
-            <div className="mb-4 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-600">
-              {error}
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-xl bg-white shadow-xl border border-brand-blue/10">
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-brand-blue/10 bg-white px-5 py-4">
+              <div>
+                <h2 className="text-lg font-semibold text-brand-text">
+                  {editing ? "Edit Schedule" : "New Schedule"}
+                </h2>
+                <p className="text-xs text-brand-text/55">
+                  {editing
+                    ? "Update this duty shift"
+                    : "Schedule one staff member across multiple days at once"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowForm(false)}
+                className="rounded-lg p-1.5 text-brand-text/50 hover:bg-gray-100 hover:text-brand-text"
+                aria-label="Close form"
+              >
+                <X className="h-5 w-5" />
+              </button>
             </div>
-          )}
-          <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Select
-              label="Branch"
-              value={form.branch_id}
-              onChange={(e) => setForm({ ...form, branch_id: e.target.value })}
-              options={branches.map((b) => ({ value: b.id, label: b.name }))}
-            />
-            <Select
-              label="Shift"
-              value={form.service_type}
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  service_type: e.target.value as Schedule["service_type"],
-                })
-              }
-              options={[
-                { value: "pickup", label: "Morning Shift" },
-                { value: "delivery", label: "Afternoon Shift" },
-                { value: "both", label: "Whole Day" },
-              ]}
-            />
-            <Select
-              label="Staff Name"
-              value={form.customer_name}
-              onChange={(e) => {
-                const selected = selectableStaff.find((s) => s.value === e.target.value);
-                setForm({
-                  ...form,
-                  customer_name: e.target.value,
-                  customer_phone: selected?.phone ?? form.customer_phone,
-                });
-              }}
-              options={[
-                { value: "", label: selectableStaff.length ? "Select staff" : "No staff records yet" },
-                ...selectableStaff.map((member) => ({
-                  value: member.value,
-                  label: member.label,
-                })),
-              ]}
-              required
-            />
-            <Input
-              label="Role / Contact (Optional)"
-              value={form.customer_phone}
-              onChange={(e) => setForm({ ...form, customer_phone: e.target.value })}
-              placeholder="e.g. Cashier, 0917..."
-            />
-            <Input
-              label="Date"
-              type="date"
-              value={form.scheduled_date}
-              onChange={(e) => setForm({ ...form, scheduled_date: e.target.value })}
-              required
-            />
-            <div className="sm:col-span-2 grid grid-cols-2 gap-4">
-              <Input
-                label="Time In"
-                type="time"
-                value={form.scheduled_time}
-                onChange={(e) => setForm({ ...form, scheduled_time: e.target.value })}
+
+            {error && (
+              <div className="mx-5 mt-4 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-600">
+                {error}
+              </div>
+            )}
+
+            <form onSubmit={handleSubmit} className="space-y-4 p-5">
+              <Select
+                label="Branch"
+                value={form.branch_id}
+                onChange={(e) => setForm({ ...form, branch_id: e.target.value })}
+                options={branches.map((b) => ({ value: b.id, label: b.name }))}
               />
-              <Input
-                label="Time Out"
-                type="time"
-                value={form.scheduled_time_out}
-                onChange={(e) => setForm({ ...form, scheduled_time_out: e.target.value })}
+
+              <Select
+                label="Staff"
+                value={form.customer_name}
+                onChange={(e) => setForm({ ...form, customer_name: e.target.value })}
+                options={[
+                  {
+                    value: "",
+                    label: selectableStaff.length ? "Select staff" : "No staff records yet",
+                  },
+                  ...selectableStaff.map((member) => ({
+                    value: member.value,
+                    label: member.label,
+                  })),
+                ]}
+                required
               />
-            </div>
-            <Input
-              label="Notes"
-              value={form.notes}
-              onChange={(e) => setForm({ ...form, notes: e.target.value })}
-            />
-            <div className="sm:col-span-2 flex gap-3">
-              <Button type="submit" disabled={saving}>
-                {saving ? "Saving…" : editing ? "Update" : "Save"}
-              </Button>
-              <Button type="button" variant="ghost" onClick={() => setShowForm(false)}>
-                Cancel
-              </Button>
-            </div>
-          </form>
+
+              <Select
+                label="Shift"
+                value={form.service_type}
+                onChange={(e) =>
+                  handleShiftChange(e.target.value as Schedule["service_type"])
+                }
+                options={[
+                  { value: "pickup", label: "Morning Shift (7 AM – 4 PM)" },
+                  { value: "delivery", label: "Afternoon Shift (1 PM – 9 PM)" },
+                  { value: "both", label: "Whole Day (7 AM – 9 PM)" },
+                ]}
+              />
+
+              <div className="grid grid-cols-2 gap-3">
+                <Input
+                  label="Time In"
+                  type="time"
+                  value={form.scheduled_time}
+                  onChange={(e) => setForm({ ...form, scheduled_time: e.target.value })}
+                />
+                <Input
+                  label="Time Out"
+                  type="time"
+                  value={form.scheduled_time_out}
+                  onChange={(e) =>
+                    setForm({ ...form, scheduled_time_out: e.target.value })
+                  }
+                />
+              </div>
+
+              <DateMultiPicker
+                label={editing ? "Date" : "Dates"}
+                selectedDates={selectedDates}
+                onChange={setSelectedDates}
+                multiple={!editing}
+              />
+
+              <Input
+                label="Notes (optional)"
+                value={form.notes}
+                onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                placeholder="Any extra details…"
+              />
+
+              <div className="flex gap-3 pt-1">
+                <Button type="submit" disabled={saving}>
+                  {saving
+                    ? "Saving…"
+                    : editing
+                      ? "Update"
+                      : selectedDates.length > 1
+                        ? `Save ${selectedDates.length} shifts`
+                        : "Save"}
+                </Button>
+                <Button type="button" variant="ghost" onClick={() => setShowForm(false)}>
+                  Cancel
+                </Button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 
@@ -475,7 +553,7 @@ export function SchedulesClient({
                 </td>
               </tr>
             ) : (
-              schedules.map((s) => (
+              visibleSchedules.map((s) => (
                 <tr key={s.id} className="border-t border-brand-blue/5 hover:bg-gray-50">
                   <td className="px-4 py-3">{s.scheduled_date}</td>
                   <td className="px-4 py-3">{s.scheduled_time ?? "07:00"}</td>
@@ -483,12 +561,7 @@ export function SchedulesClient({
                   <td className="px-4 py-3">
                     {(s.branches as { name: string } | undefined)?.name ?? "—"}
                   </td>
-                  <td className="px-4 py-3">
-                    <div>{s.customer_name}</div>
-                    {s.customer_phone && (
-                      <div className="text-xs text-brand-text/50">{s.customer_phone}</div>
-                    )}
-                  </td>
+                  <td className="px-4 py-3">{s.customer_name}</td>
                   <td className="px-4 py-3">{shiftLabel[s.service_type]}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-2">
@@ -516,6 +589,11 @@ export function SchedulesClient({
             )}
           </tbody>
         </table>
+        <LoadMoreFooter
+          hasMore={hasMoreSchedules}
+          remaining={remainingSchedules}
+          onLoadMore={loadMoreSchedules}
+        />
       </div>
     </div>
   );

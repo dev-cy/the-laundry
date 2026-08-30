@@ -10,6 +10,8 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Pencil, Plus, Trash2, X } from "lucide-react";
+import { useLoadMore } from "@/lib/use-load-more";
+import { LoadMoreFooter } from "@/components/ui/LoadMoreFooter";
 
 const emptyQty = (): CashQuantities => ({
   qty_1: 0,
@@ -319,6 +321,12 @@ export function ReportsPageClient({
   const [loadingList, setLoadingList] = useState(false);
   const canDelete = canDeleteEntries(role);
   const canFilter = isAdminLike(role);
+  const {
+    visible: visibleReports,
+    hasMore: hasMoreReports,
+    loadMore: loadMoreReports,
+    remaining: remainingReports,
+  } = useLoadMore(reports);
 
   async function loadCustomerCounts(reportRows: DailyReport[], branchScope?: string | null) {
     if (reportRows.length === 0) {
@@ -515,7 +523,7 @@ export function ReportsPageClient({
                 </td>
               </tr>
             ) : (
-              reports.map((r) => (
+              visibleReports.map((r) => (
                 <tr key={r.id} className="border-t border-brand-blue/5 hover:bg-gray-50">
                   <td className="px-4 py-3">{r.report_date}</td>
                   <td className="px-4 py-3">
@@ -563,6 +571,11 @@ export function ReportsPageClient({
             )}
           </tbody>
         </table>
+        <LoadMoreFooter
+          hasMore={hasMoreReports}
+          remaining={remainingReports}
+          onLoadMore={loadMoreReports}
+        />
       </div>
       )}
     </div>

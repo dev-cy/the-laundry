@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/Button";
 import type { AppRole } from "@/lib/auth/roles";
 import { roleLabel } from "@/lib/auth/roles";
 import { Trash2 } from "lucide-react";
+import { useLoadMore } from "@/lib/use-load-more";
+import { LoadMoreFooter } from "@/components/ui/LoadMoreFooter";
 
 type ListedUser = {
   id: string;
@@ -40,6 +42,12 @@ export function UsersAdminClient() {
 
   const canAssignSuperAdmin = currentUserRole === "super_admin";
   const canDeleteUsers = currentUserRole === "super_admin";
+  const {
+    visible: visibleUsers,
+    hasMore: hasMoreUsers,
+    loadMore: loadMoreUsers,
+    remaining: remainingUsers,
+  } = useLoadMore(users);
 
   async function fetchUsers() {
     setLoading(true);
@@ -181,7 +189,7 @@ export function UsersAdminClient() {
                 </td>
               </tr>
             ) : (
-              users.map((u) => {
+              visibleUsers.map((u) => {
                 const locked =
                   u.role === "super_admin" && currentUserRole !== "super_admin";
                 const isSelf = u.id === currentUserId;
@@ -259,6 +267,11 @@ export function UsersAdminClient() {
             )}
           </tbody>
         </table>
+        <LoadMoreFooter
+          hasMore={hasMoreUsers}
+          remaining={remainingUsers}
+          onLoadMore={loadMoreUsers}
+        />
       </div>
     </div>
   );

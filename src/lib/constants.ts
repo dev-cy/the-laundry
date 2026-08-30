@@ -16,6 +16,9 @@ export const BUSINESS = {
 
 export const DENOMINATIONS = [1, 5, 10, 20, 50, 100, 200, 500, 1000] as const;
 
+/** Earliest month included in payroll history (semi-monthly cut-offs). */
+export const PAYROLL_HISTORY_START_MONTH = "2026-08";
+
 export type Denomination = (typeof DENOMINATIONS)[number];
 
 export const SERVICE_TYPES = [

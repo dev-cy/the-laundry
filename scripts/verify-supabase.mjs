@@ -121,6 +121,17 @@ async function main() {
   if (reportsError) fail("daily_reports table", reportsError.message);
   else ok("daily_reports table");
 
+  const { error: schedulesError } = await admin
+    .from("schedules")
+    .select("id, staff_id, actual_time_in, overtime_minutes, daily_pay_override")
+    .limit(1);
+  if (schedulesError) fail("schedules table (attendance columns)", schedulesError.message);
+  else ok("schedules table with attendance columns");
+
+  const { error: advancesError } = await admin.from("staff_cash_advances").select("id").limit(1);
+  if (advancesError) fail("staff_cash_advances table", advancesError.message);
+  else ok("staff_cash_advances table");
+
   // Anon can read branches (public site)
   const { error: anonBranchesError } = await anon.from("branches").select("id").limit(1);
   if (anonBranchesError) fail("anon branches read", anonBranchesError.message);

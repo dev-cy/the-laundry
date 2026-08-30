@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import {
   Calendar,
+  Clock,
   CreditCard,
   FileText,
   LayoutDashboard,
@@ -14,6 +15,7 @@ import {
   UserCog,
   Users,
   Wallet,
+  Banknote,
   X,
 } from "lucide-react";
 import { Logo } from "@/components/Logo";
@@ -23,7 +25,9 @@ import { roleLabel, type AppRole } from "@/lib/auth/roles";
 const NAV_ITEMS = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/finance", label: "Finance", icon: LineChart },
+  { href: "/admin/payroll", label: "Payroll", icon: Banknote },
   { href: "/admin/reports", label: "Reports", icon: FileText },
+  { href: "/admin/attendance", label: "Sign In", icon: Clock },
   { href: "/admin/transactions", label: "Transactions", icon: CreditCard },
   { href: "/admin/schedules", label: "Schedules", icon: Calendar },
   { href: "/admin/cash-release", label: "Release Cash", icon: Wallet },
@@ -52,12 +56,14 @@ export function AdminNavShell({
   const navItems =
     role === "staff"
       ? NAV_ITEMS.filter((item) =>
-          ["/admin", "/admin/reports", "/admin/transactions"].includes(item.href)
+          ["/admin", "/admin/reports", "/admin/attendance", "/admin/transactions"].includes(
+            item.href
+          )
         )
       : NAV_ITEMS;
 
   return (
-    <div className="min-h-screen flex bg-gray-50">
+    <div className="min-h-screen flex bg-gray-50 md:h-screen md:overflow-hidden">
       <button
         type="button"
         className="md:hidden fixed top-3 left-3 z-50 rounded-lg bg-brand-text text-white p-2 shadow-lg"
@@ -79,7 +85,8 @@ export function AdminNavShell({
       <aside
         className={[
           "w-64 bg-brand-text text-white flex flex-col shrink-0",
-          "fixed inset-y-0 left-0 z-50 transition-transform duration-300 md:static",
+          "fixed inset-y-0 left-0 z-50 h-screen transition-transform duration-300",
+          "md:relative md:translate-x-0 md:overflow-y-auto",
           isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0",
         ].join(" ")}
       >
@@ -119,7 +126,7 @@ export function AdminNavShell({
         </div>
       </aside>
 
-      <main className="flex-1 overflow-auto min-w-0 md:ml-0">
+      <main className="flex-1 min-w-0 md:h-screen md:overflow-y-auto">
         <div className="p-4 pt-16 sm:p-8 md:pt-8">{children}</div>
       </main>
     </div>

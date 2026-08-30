@@ -1,14 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency, formatWeightKg, serviceTypeLabel, todayISO } from "@/lib/utils";
+import { useLoadMore } from "@/lib/use-load-more";
 import type { Branch, Transaction } from "@/lib/types";
 import { SERVICE_TYPES } from "@/lib/constants";
 import { canDeleteEntries, isAdminLike, type AppRole } from "@/lib/auth/roles";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
+import { LoadMoreFooter } from "@/components/ui/LoadMoreFooter";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 
 function emptyForm(branchId: string) {
@@ -149,31 +151,48 @@ export function TransactionsClient({
     partial: "text-blue-600 bg-blue-50",
   };
 
-  const dailySummary = Object.values(
-    transactions.reduce<
-      Record<
-        string,
-        { date: string; total: number; unpaid: number; count: number; branchNames: Set<string> }
-      >
-    >((acc, tx) => {
-      const key = tx.transaction_date;
-      if (!acc[key]) {
-        acc[key] = {
-          date: key,
-          total: 0,
-          unpaid: 0,
-          count: 0,
-          branchNames: new Set<string>(),
-        };
-      }
-      acc[key].total += tx.amount;
-      if (tx.payment_status === "unpaid") acc[key].unpaid += tx.amount;
-      acc[key].count += 1;
-      const branchName = (tx.branches as { name: string } | undefined)?.name;
-      if (branchName) acc[key].branchNames.add(branchName);
-      return acc;
-    }, {})
-  ).sort((a, b) => b.date.localeCompare(a.date));
+  const dailySummary = useMemo(
+    () =>
+      Object.values(
+        transactions.reduce<
+          Record<
+            string,
+            { date: string; total: number; unpaid: number; count: number; branchNames: Set<string> }
+          >
+        >((acc, tx) => {
+          const key = tx.transaction_date;
+          if (!acc[key]) {
+            acc[key] = {
+              date: key,
+              total: 0,
+              unpaid: 0,
+              count: 0,
+              branchNames: new Set<string>(),
+            };
+          }
+          acc[key].total += tx.amount;
+          if (tx.payment_status === "unpaid") acc[key].unpaid += tx.amount;
+          acc[key].count += 1;
+          const branchName = (tx.branches as { name: string } | undefined)?.name;
+          if (branchName) acc[key].branchNames.add(branchName);
+          return acc;
+        }, {})
+      ).sort((a, b) => b.date.localeCompare(a.date)),
+    [transactions]
+  );
+
+  const {
+    visible: visibleDailySummary,
+    hasMore: hasMoreDailySummary,
+    loadMore: loadMoreDailySummary,
+    remaining: remainingDailySummary,
+  } = useLoadMore(dailySummary);
+  const {
+    visible: visibleTransactions,
+    hasMore: hasMoreTransactions,
+    loadMore: loadMoreTransactions,
+    remaining: remainingTransactions,
+  } = useLoadMore(transactions);
 
   return (
     <div>
@@ -366,7 +385,7 @@ export function TransactionsClient({
                 </td>
               </tr>
             ) : (
-              dailySummary.map((d) => (
+              visibleDailySummary.map((d) => (
                 <tr key={d.date} className="border-t border-brand-blue/5">
                   <td className="px-4 py-2">{d.date}</td>
                   <td className="px-4 py-2 text-brand-text/70">
@@ -380,6 +399,11 @@ export function TransactionsClient({
             )}
           </tbody>
         </table>
+        <LoadMoreFooter
+          hasMore={hasMoreDailySummary}
+          remaining={remainingDailySummary}
+          onLoadMore={loadMoreDailySummary}
+        />
       </div>
 
       <div className="rounded-xl border border-brand-blue/10 bg-white overflow-x-auto">
@@ -409,7 +433,7 @@ export function TransactionsClient({
                 </td>
               </tr>
             ) : (
-              transactions.map((t) => (
+              visibleTransactions.map((t) => (
                 <tr key={t.id} className="border-t border-brand-blue/5 hover:bg-gray-50">
                   <td className="px-4 py-3">{t.transaction_date}</td>
                   <td className="px-4 py-3">
@@ -457,6 +481,11 @@ export function TransactionsClient({
             )}
           </tbody>
         </table>
+        <LoadMoreFooter
+          hasMore={hasMoreTransactions}
+          remaining={remainingTransactions}
+          onLoadMore={loadMoreTransactions}
+        />
       </div>
     </div>
   );

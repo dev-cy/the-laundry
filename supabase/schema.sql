@@ -94,6 +94,20 @@ CREATE TABLE IF NOT EXISTS schedules (
 
 ALTER TABLE schedules ADD COLUMN IF NOT EXISTS scheduled_time_out TIME DEFAULT '16:00';
 ALTER TABLE schedules ALTER COLUMN scheduled_time SET DEFAULT '07:00';
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS staff_id UUID REFERENCES staff(id) ON DELETE SET NULL;
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS actual_time_in TIME;
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS actual_time_out TIME;
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS overtime_minutes INT NOT NULL DEFAULT 0;
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS undertime_minutes INT NOT NULL DEFAULT 0;
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS daily_pay_override INT;
+
+CREATE INDEX IF NOT EXISTS idx_schedules_staff_date
+  ON schedules (staff_id, scheduled_date DESC)
+  WHERE staff_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_schedules_payroll_month
+  ON schedules (branch_id, scheduled_date DESC)
+  WHERE status NOT IN ('cancelled');
 
 -- Staff records
 CREATE TABLE IF NOT EXISTS staff (
@@ -107,11 +121,27 @@ CREATE TABLE IF NOT EXISTS staff (
   emergency_contact_relationship TEXT,
   emergency_contact_phone TEXT,
   date_hired DATE,
-  salary INT NOT NULL DEFAULT 0,
+  salary INT NOT NULL DEFAULT 0, -- daily salary in PHP (per shift day)
   created_by UUID REFERENCES auth.users(id),
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
+
+-- Staff cash advances (deducted from semi-monthly payroll)
+CREATE TABLE IF NOT EXISTS staff_cash_advances (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  staff_id UUID NOT NULL REFERENCES staff(id) ON DELETE CASCADE,
+  branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+  amount INT NOT NULL CHECK (amount > 0),
+  advance_date DATE NOT NULL DEFAULT CURRENT_DATE,
+  notes TEXT,
+  created_by UUID REFERENCES auth.users(id),
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_staff_cash_advances_staff_date
+  ON staff_cash_advances (staff_id, advance_date DESC);
 
 -- Cash releases (release cash on hand)
 CREATE TABLE IF NOT EXISTS cash_releases (
@@ -174,6 +204,7 @@ ALTER TABLE daily_reports ENABLE ROW LEVEL SECURITY;
 ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE schedules ENABLE ROW LEVEL SECURITY;
 ALTER TABLE staff ENABLE ROW LEVEL SECURITY;
+ALTER TABLE staff_cash_advances ENABLE ROW LEVEL SECURITY;
 ALTER TABLE cash_releases ENABLE ROW LEVEL SECURITY;
 ALTER TABLE inventory ENABLE ROW LEVEL SECURITY;
 ALTER TABLE inventory_catalog ENABLE ROW LEVEL SECURITY;
@@ -583,20 +614,44 @@ CREATE POLICY "Delete transactions" ON transactions
 -- Admin-only tables (staff cannot read/write even via API)
 CREATE POLICY "Select schedules" ON schedules
   FOR SELECT USING (public.is_admin_like());
+CREATE POLICY "Branch select schedules" ON schedules
+  FOR SELECT USING (
+    auth.role() = 'authenticated' AND public.can_access_branch(branch_id)
+  );
 CREATE POLICY "Insert schedules" ON schedules
   FOR INSERT WITH CHECK (public.is_admin_like());
 CREATE POLICY "Update schedules" ON schedules
   FOR UPDATE USING (public.is_admin_like());
+CREATE POLICY "Branch update schedule attendance" ON schedules
+  FOR UPDATE USING (
+    auth.role() = 'authenticated' AND public.can_access_branch(branch_id)
+  )
+  WITH CHECK (
+    auth.role() = 'authenticated' AND public.can_access_branch(branch_id)
+  );
 CREATE POLICY "Delete schedules" ON schedules
   FOR DELETE USING (public.is_super_admin());
 
 CREATE POLICY "Select staff" ON staff
   FOR SELECT USING (public.is_admin_like());
+CREATE POLICY "Branch select staff roster" ON staff
+  FOR SELECT USING (
+    auth.role() = 'authenticated' AND public.can_access_branch(branch_id)
+  );
 CREATE POLICY "Insert staff" ON staff
   FOR INSERT WITH CHECK (public.is_admin_like());
 CREATE POLICY "Update staff" ON staff
   FOR UPDATE USING (public.is_admin_like());
 CREATE POLICY "Delete staff" ON staff
+  FOR DELETE USING (public.is_super_admin());
+
+CREATE POLICY "Select staff_cash_advances" ON staff_cash_advances
+  FOR SELECT USING (public.is_admin_like());
+CREATE POLICY "Insert staff_cash_advances" ON staff_cash_advances
+  FOR INSERT WITH CHECK (public.is_admin_like());
+CREATE POLICY "Update staff_cash_advances" ON staff_cash_advances
+  FOR UPDATE USING (public.is_admin_like());
+CREATE POLICY "Delete staff_cash_advances" ON staff_cash_advances
   FOR DELETE USING (public.is_super_admin());
 
 CREATE POLICY "Select cash_releases" ON cash_releases
@@ -639,6 +694,7 @@ DROP TRIGGER IF EXISTS daily_reports_updated_at ON daily_reports;
 DROP TRIGGER IF EXISTS transactions_updated_at ON transactions;
 DROP TRIGGER IF EXISTS schedules_updated_at ON schedules;
 DROP TRIGGER IF EXISTS staff_updated_at ON staff;
+DROP TRIGGER IF EXISTS staff_cash_advances_updated_at ON staff_cash_advances;
 DROP TRIGGER IF EXISTS cash_releases_updated_at ON cash_releases;
 DROP TRIGGER IF EXISTS inventory_updated_at ON inventory;
 DROP TRIGGER IF EXISTS inventory_catalog_updated_at ON inventory_catalog;
@@ -648,6 +704,7 @@ CREATE TRIGGER daily_reports_updated_at BEFORE UPDATE ON daily_reports FOR EACH 
 CREATE TRIGGER transactions_updated_at BEFORE UPDATE ON transactions FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER schedules_updated_at BEFORE UPDATE ON schedules FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER staff_updated_at BEFORE UPDATE ON staff FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER staff_cash_advances_updated_at BEFORE UPDATE ON staff_cash_advances FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER cash_releases_updated_at BEFORE UPDATE ON cash_releases FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER inventory_updated_at BEFORE UPDATE ON inventory FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER inventory_catalog_updated_at BEFORE UPDATE ON inventory_catalog FOR EACH ROW EXECUTE FUNCTION update_updated_at();

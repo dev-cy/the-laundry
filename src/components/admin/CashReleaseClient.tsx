@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Plus, Pencil, Trash2 } from "lucide-react";
+import { useLoadMore } from "@/lib/use-load-more";
+import { LoadMoreFooter } from "@/components/ui/LoadMoreFooter";
 import { formatCurrency, todayISO } from "@/lib/utils";
 
 export function CashReleaseClient({
@@ -27,6 +29,12 @@ export function CashReleaseClient({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const canDelete = canDeleteEntries(role);
+  const {
+    visible: visibleReleases,
+    hasMore: hasMoreReleases,
+    loadMore: loadMoreReleases,
+    remaining: remainingReleases,
+  } = useLoadMore(releases);
 
   const [form, setForm] = useState({
     branch_id: branches[0]?.id ?? "",
@@ -200,7 +208,7 @@ export function CashReleaseClient({
                 </td>
               </tr>
             ) : (
-              releases.map((release) => (
+              visibleReleases.map((release) => (
                 <tr key={release.id} className="border-t border-brand-blue/5 hover:bg-gray-50">
                   <td className="px-4 py-3">{release.release_date}</td>
                   <td className="px-4 py-3">
@@ -236,6 +244,11 @@ export function CashReleaseClient({
             )}
           </tbody>
         </table>
+        <LoadMoreFooter
+          hasMore={hasMoreReleases}
+          remaining={remainingReleases}
+          onLoadMore={loadMoreReleases}
+        />
       </div>
     </div>
   );

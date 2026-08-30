@@ -38,7 +38,8 @@ export function canAccessAdminPath(role: AppRole, pathname: string): boolean {
   return (
     pathname === "/admin" ||
     pathname.startsWith("/admin/reports") ||
-    pathname.startsWith("/admin/transactions")
+    pathname.startsWith("/admin/transactions") ||
+    pathname.startsWith("/admin/attendance")
   );
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { formatCurrency } from "@/lib/utils";
 
 type ChartSeries = "totalSales" | "cashReceived" | "unpaid";
@@ -39,6 +39,12 @@ export function SalesTrendChart({
   data,
   series = "totalSales",
 }: SalesTrendChartProps) {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const meta = SERIES_META[series];
   const values = useMemo(() => data.map((point) => point[series]), [data, series]);
   const max = Math.max(...values, 1);
@@ -88,57 +94,65 @@ export function SalesTrendChart({
       </div>
 
       <div className="overflow-x-auto">
-        <svg
-          viewBox={`0 0 ${width} ${height}`}
-          className="min-w-full"
-          role="img"
-          aria-label={`${title} chart`}
-        >
-          {points.map((point, index) => {
-            const barHeight = chartH - (point.y - padY);
-            const barX = padX + index * (barWidth + barGap);
-            const barY = point.y;
-            return (
-              <g key={`${point.label}-${index}`}>
-                <rect
-                  x={barX}
-                  y={barY}
-                  width={Math.max(barWidth, 2)}
-                  height={Math.max(barHeight, 0)}
-                  rx={2}
-                  fill={meta.bar}
-                  opacity={0.35}
-                >
-                  <title>
-                    {point.label}: {formatCurrency(point.value)}
-                  </title>
-                </rect>
-              </g>
-            );
-          })}
-          {linePath && (
-            <path
-              d={linePath}
-              fill="none"
-              stroke={meta.line}
-              strokeWidth={2}
-              strokeLinejoin="round"
-            />
-          )}
-          {points.map((point, index) => (
-            <circle
-              key={`dot-${index}`}
-              cx={point.x}
-              cy={point.y}
-              r={3}
-              fill={meta.line}
-            >
-              <title>
-                {point.label}: {formatCurrency(point.value)}
-              </title>
-            </circle>
-          ))}
-        </svg>
+        {!mounted ? (
+          <div
+            className="rounded-lg bg-brand-light/15 animate-pulse"
+            style={{ height }}
+            aria-hidden
+          />
+        ) : (
+          <svg
+            viewBox={`0 0 ${width} ${height}`}
+            className="min-w-full"
+            role="img"
+            aria-label={`${title} chart`}
+          >
+            {points.map((point, index) => {
+              const barHeight = chartH - (point.y - padY);
+              const barX = padX + index * (barWidth + barGap);
+              const barY = point.y;
+              return (
+                <g key={`${point.label}-${index}`}>
+                  <rect
+                    x={barX}
+                    y={barY}
+                    width={Math.max(barWidth, 2)}
+                    height={Math.max(barHeight, 0)}
+                    rx={2}
+                    fill={meta.bar}
+                    opacity={0.35}
+                  >
+                    <title>
+                      {point.label}: {formatCurrency(point.value)}
+                    </title>
+                  </rect>
+                </g>
+              );
+            })}
+            {linePath && (
+              <path
+                d={linePath}
+                fill="none"
+                stroke={meta.line}
+                strokeWidth={2}
+                strokeLinejoin="round"
+              />
+            )}
+            {points.map((point, index) => (
+              <circle
+                key={`dot-${index}`}
+                cx={point.x}
+                cy={point.y}
+                r={3}
+                fill={meta.line}
+              >
+                <title>
+                  {point.label}: {formatCurrency(point.value)}
+                </title>
+              </circle>
+            ))}
+          </svg>
+        )}
       </div>
 
       <div

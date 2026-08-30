@@ -9,6 +9,8 @@ import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { formatCurrency, todayISO } from "@/lib/utils";
+import { useLoadMore } from "@/lib/use-load-more";
+import { LoadMoreFooter } from "@/components/ui/LoadMoreFooter";
 
 export function StaffClient({
   branches,
@@ -27,6 +29,12 @@ export function StaffClient({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const canDelete = canDeleteEntries(role);
+  const {
+    visible: visibleStaff,
+    hasMore: hasMoreStaff,
+    loadMore: loadMoreStaff,
+    remaining: remainingStaff,
+  } = useLoadMore(staff);
 
   const [form, setForm] = useState({
     branch_id: branches[0]?.id ?? "",
@@ -130,7 +138,7 @@ export function StaffClient({
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-2xl font-bold text-brand-text">Staff</h1>
-          <p className="text-brand-text/60">Manage staff records and salary details</p>
+          <p className="text-brand-text/60">Manage staff records and daily pay rates</p>
         </div>
         <Button onClick={openNew}>
           <Plus className="w-4 h-4" />
@@ -200,7 +208,7 @@ export function StaffClient({
               onChange={(e) => setForm({ ...form, date_hired: e.target.value })}
             />
             <Input
-              label="Monthly Salary (₱)"
+              label="Daily Salary (₱)"
               type="number"
               min={0}
               value={form.salary || ""}
@@ -230,7 +238,7 @@ export function StaffClient({
               <th className="text-left px-4 py-3 font-semibold">Phone</th>
               <th className="text-left px-4 py-3 font-semibold">Emergency Contact</th>
               <th className="text-left px-4 py-3 font-semibold">Date Hired</th>
-              <th className="text-right px-4 py-3 font-semibold">Salary</th>
+              <th className="text-right px-4 py-3 font-semibold">Daily Salary</th>
               <th className="px-4 py-3" />
             </tr>
           </thead>
@@ -242,7 +250,7 @@ export function StaffClient({
                 </td>
               </tr>
             ) : (
-              staff.map((member) => (
+              visibleStaff.map((member) => (
                 <tr key={member.id} className="border-t border-brand-blue/5 hover:bg-gray-50">
                   <td className="px-4 py-3 font-medium">{member.name}</td>
                   <td className="px-4 py-3">
@@ -284,6 +292,11 @@ export function StaffClient({
             )}
           </tbody>
         </table>
+        <LoadMoreFooter
+          hasMore={hasMoreStaff}
+          remaining={remainingStaff}
+          onLoadMore={loadMoreStaff}
+        />
       </div>
     </div>
   );

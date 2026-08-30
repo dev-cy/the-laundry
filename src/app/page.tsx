@@ -7,6 +7,8 @@ import {
   Shirt,
 } from "lucide-react";
 import { Logo } from "@/components/Logo";
+import { SiteFooter } from "@/components/SiteFooter";
+import { SiteHeaderActions } from "@/components/SiteHeaderActions";
 import { Button } from "@/components/ui/Button";
 import { BUSINESS } from "@/lib/constants";
 import { createClient } from "@/lib/supabase/server";
@@ -59,9 +61,7 @@ export default async function HomePage() {
 
         <nav className="relative z-10 flex items-center justify-between px-6 py-4 max-w-6xl mx-auto">
           <Logo size="sm" showTagline={false} />
-          <Button href="/login" size="sm">
-            Login
-          </Button>
+          <SiteHeaderActions />
         </nav>
 
         <section className="relative z-10 flex flex-col items-center text-center px-6 pt-12 pb-24 max-w-4xl mx-auto">
@@ -169,13 +169,7 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="py-8 px-6 bg-brand-text text-white/70 text-center text-sm">
-        <Logo size="sm" showTagline />
-        <p className="mt-4">
-          &copy; {new Date().getFullYear()} {BUSINESS.name}. All rights reserved.
-        </p>
-      </footer>
+      <SiteFooter />
     </div>
   );
 }

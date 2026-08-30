@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Plus, Pencil, AlertTriangle, ArrowRightLeft, Trash2 } from "lucide-react";
+import { useLoadMore } from "@/lib/use-load-more";
+import { LoadMoreFooter } from "@/components/ui/LoadMoreFooter";
 
 function catalogOf(item: InventoryItem): InventoryCatalog {
   return item.inventory_catalog!;
@@ -67,6 +69,13 @@ export function InventoryClient({
       catalog.sku.toLowerCase().includes(query)
     );
   });
+
+  const {
+    visible: visibleItems,
+    hasMore: hasMoreItems,
+    loadMore: loadMoreItems,
+    remaining: remainingItems,
+  } = useLoadMore(filteredItems);
 
   const totalQuantity = filteredItems.reduce((sum, item) => sum + item.quantity, 0);
   const lowStockCount = filteredItems.filter(
@@ -508,7 +517,7 @@ export function InventoryClient({
                 </td>
               </tr>
             ) : (
-              filteredItems.map((item) => {
+              visibleItems.map((item) => {
                 const catalog = item.inventory_catalog;
                 if (!catalog) return null;
                 const isLow = item.quantity <= catalog.low_stock_threshold;
@@ -568,6 +577,11 @@ export function InventoryClient({
             )}
           </tbody>
         </table>
+        <LoadMoreFooter
+          hasMore={hasMoreItems}
+          remaining={remainingItems}
+          onLoadMore={loadMoreItems}
+        />
       </div>
     </div>
   );

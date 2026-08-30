@@ -61,12 +61,18 @@ export interface Transaction {
 export interface Schedule {
   id: string;
   branch_id: string;
+  staff_id?: string | null;
   customer_name: string;
   customer_phone: string | null;
   service_type: "pickup" | "delivery" | "both";
   scheduled_date: string;
   scheduled_time: string | null;
   scheduled_time_out: string | null;
+  actual_time_in?: string | null;
+  actual_time_out?: string | null;
+  overtime_minutes?: number;
+  undertime_minutes?: number;
+  daily_pay_override?: number | null;
   status: "pending" | "confirmed" | "completed" | "cancelled";
   notes: string | null;
   created_by: string | null;
@@ -113,6 +119,18 @@ export interface Staff {
   created_at: string;
   updated_at: string;
   branches?: Branch;
+}
+
+export interface StaffCashAdvance {
+  id: string;
+  staff_id: string;
+  branch_id: string;
+  amount: number;
+  advance_date: string;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface CashRelease {
