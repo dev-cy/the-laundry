@@ -7,6 +7,7 @@ import {
   type AppRole,
 } from "@/lib/auth/roles";
 import { isSameOriginRequest } from "@/lib/security";
+import { getAuthCallbackUrl } from "@/lib/site-url";
 
 function unauthorized() {
   return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
@@ -18,6 +19,101 @@ function forbiddenOrigin() {
 
 function isValidRole(role: unknown): role is AppRole {
   return role === "super_admin" || role === "admin" || role === "staff";
+}
+
+function isValidEmail(email: unknown): email is string {
+  return typeof email === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+}
+
+export async function POST(request: Request) {
+  if (!isSameOriginRequest(request)) return forbiddenOrigin();
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const actorRole = user ? getUserRole(user) : null;
+  if (!user || !actorRole || !canManageUsers(actorRole)) return unauthorized();
+
+  const body = (await request.json()) as {
+    email?: string;
+    role?: AppRole;
+    branchId?: string | null;
+  };
+  const email = body.email?.trim().toLowerCase() ?? "";
+  const role = body.role;
+  const branchId = body.branchId ?? null;
+
+  if (!isValidEmail(email) || !isValidRole(role)) {
+    return NextResponse.json({ error: "Invalid payload." }, { status: 400 });
+  }
+
+  if (role === "super_admin" && actorRole !== "super_admin") {
+    return NextResponse.json(
+      { error: "Only a Super Admin can invite a Super Admin." },
+      { status: 403 }
+    );
+  }
+
+  if (role === "staff" && !branchId) {
+    return NextResponse.json({ error: "Assigned branch is required for staff role." }, { status: 400 });
+  }
+
+  if (role === "staff" && branchId) {
+    const { data: branch } = await supabase.from("branches").select("id").eq("id", branchId).maybeSingle();
+    if (!branch) {
+      return NextResponse.json({ error: "Assigned branch is invalid." }, { status: 400 });
+    }
+  }
+
+  try {
+    const admin = createAdminClient();
+    const redirectTo = getAuthCallbackUrl("invite");
+
+    const { data, error } = await admin.auth.admin.inviteUserByEmail(email, {
+      redirectTo,
+    });
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+
+    const invitedUser = data.user;
+    if (!invitedUser) {
+      return NextResponse.json({ error: "Invite sent but user record was not returned." }, { status: 500 });
+    }
+
+    const appMeta = invitedUser.app_metadata ?? {};
+    const userMeta = { ...(invitedUser.user_metadata ?? {}) };
+    delete userMeta.role;
+    delete userMeta.branch_id;
+
+    const { error: updateError } = await admin.auth.admin.updateUserById(invitedUser.id, {
+      app_metadata: {
+        ...appMeta,
+        role,
+        branch_id: role === "staff" ? branchId : null,
+      },
+      user_metadata: userMeta,
+    });
+
+    if (updateError) {
+      return NextResponse.json(
+        {
+          error: `Invite email sent, but role assignment failed: ${updateError.message}`,
+        },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ ok: true, userId: invitedUser.id, redirectTo });
+  } catch (e) {
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : "Failed to invite user." },
+      { status: 500 }
+    );
+  }
 }
 
 export async function GET() {

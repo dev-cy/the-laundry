@@ -1,0 +1,12 @@
+# After adding www.the-laundry.cyregjr.com in Netlify + DNS, send www → primary domain.
+[[redirects]]
+  from = "https://www.the-laundry.cyregjr.com/*"
+  to = "https://the-laundry.cyregjr.com/:splat"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "http://www.the-laundry.cyregjr.com/*"
+  to = "https://the-laundry.cyregjr.com/:splat"
+  status = 301
+  force = true

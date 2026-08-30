@@ -1,9 +1,7 @@
-import Link from "next/link";
 import type { Metadata } from "next";
-import { Logo } from "@/components/Logo";
 import { LegalDocumentView } from "@/components/LegalDocumentView";
 import { SiteFooter } from "@/components/SiteFooter";
-import { SiteHeaderActions } from "@/components/SiteHeaderActions";
+import { SITE_HEADER_OFFSET_CLASS, SiteHeader } from "@/components/SiteHeader";
 import { privacyPolicy } from "@/lib/legal/privacy-policy";
 
 export const metadata: Metadata = {
@@ -15,16 +13,9 @@ export const metadata: Metadata = {
 export default function PrivacyPolicyPage() {
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="border-b border-brand-blue/10 bg-white">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <Link href="/" aria-label="Back to homepage">
-            <Logo size="sm" showTagline={false} />
-          </Link>
-          <SiteHeaderActions />
-        </div>
-      </header>
+      <SiteHeader />
 
-      <main className="flex-1 px-6 py-12">
+      <main className={`flex-1 px-6 py-12 ${SITE_HEADER_OFFSET_CLASS}`}>
         <div className="mx-auto max-w-3xl">
           <LegalDocumentView document={privacyPolicy} />
         </div>

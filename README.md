@@ -67,14 +67,30 @@ Re-run the policy section whenever you update RLS (roles / branch scoping / dele
 
 In Supabase Dashboard → **Authentication** → **URL Configuration**:
 
-1. Set **Site URL** to `http://localhost:3000` (for local development)
+**Production (`https://the-laundry.cyregjr.com`)**
+
+1. Set **Site URL** to `https://the-laundry.cyregjr.com`
 2. Add these **Redirect URLs**:
+   - `https://the-laundry.cyregjr.com/auth/callback`
+   - `https://the-laundry.cyregjr.com/**`
+3. Keep local URLs for development:
    - `http://localhost:3000/auth/callback`
    - `http://localhost:3000/**`
-3. Enable **Email** provider (for staff email/password login)
-4. Create users under Authentication → Users, then assign roles via SQL or the in-app **Users** page
 
-> When you deploy to production, update Site URL and Redirect URLs to your live domain.
+Set `NEXT_PUBLIC_SITE_URL` to match where the app runs:
+
+- Local: `http://localhost:3000`
+- Production: `https://the-laundry.cyregjr.com`
+
+Invite and magic-link emails use `NEXT_PUBLIC_SITE_URL` to build the verification link (`/auth/callback?type=invite`). After clicking the link, invited users land on **Create Password**, then the admin dashboard.
+
+**Inviting users**
+
+1. Enable **Email** provider under Authentication → Providers
+2. Use **Admin → Users** in the app → **Send invite** (recommended), or invite from Supabase Dashboard
+3. Assign roles in-app after invite, or set role/branch when sending the invite from the Users page
+
+> If invite links still point to localhost, check Supabase **Site URL**, hosting env `NEXT_PUBLIC_SITE_URL`, and redeploy after changing env vars.
 
 ### 5. Run locally
 

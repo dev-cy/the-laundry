@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
 import type { AppRole } from "@/lib/auth/roles";
 import { roleLabel } from "@/lib/auth/roles";
 import { Trash2 } from "lucide-react";
@@ -39,6 +40,11 @@ export function UsersAdminClient() {
   const [branchDrafts, setBranchDrafts] = useState<Record<string, string>>({});
   const [savingUserId, setSavingUserId] = useState<string | null>(null);
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState<AppRole>("staff");
+  const [inviteBranchId, setInviteBranchId] = useState("");
+  const [inviting, setInviting] = useState(false);
+  const [inviteMessage, setInviteMessage] = useState<string | null>(null);
 
   const canAssignSuperAdmin = currentUserRole === "super_admin";
   const canDeleteUsers = currentUserRole === "super_admin";
@@ -104,6 +110,50 @@ export function UsersAdminClient() {
     await fetchUsers();
   }
 
+  async function inviteUser(e: React.FormEvent) {
+    e.preventDefault();
+    const email = inviteEmail.trim().toLowerCase();
+    if (!email) {
+      setError("Enter an email address to invite.");
+      return;
+    }
+    if (inviteRole === "staff" && !inviteBranchId) {
+      setError("Please assign a branch when inviting Staff.");
+      return;
+    }
+    if (inviteRole === "super_admin" && !canAssignSuperAdmin) {
+      setError("Only a Super Admin can invite a Super Admin.");
+      return;
+    }
+
+    setInviting(true);
+    setError(null);
+    setInviteMessage(null);
+
+    const res = await fetch("/api/admin/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email,
+        role: inviteRole,
+        branchId: inviteRole === "staff" ? inviteBranchId : null,
+      }),
+    });
+    const data = (await res.json()) as { error?: string };
+    setInviting(false);
+
+    if (!res.ok) {
+      setError(data.error ?? "Failed to send invite.");
+      return;
+    }
+
+    setInviteEmail("");
+    setInviteRole("staff");
+    setInviteBranchId("");
+    setInviteMessage(`Invite sent to ${email}. They will receive an email to set their password.`);
+    await fetchUsers();
+  }
+
   async function deleteUser(u: ListedUser) {
     if (!canDeleteUsers) return;
     if (u.id === currentUserId) {
@@ -162,6 +212,60 @@ export function UsersAdminClient() {
           {error}
         </div>
       )}
+      {inviteMessage && (
+        <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">
+          {inviteMessage}
+        </div>
+      )}
+
+      <form
+        onSubmit={inviteUser}
+        className="mb-6 rounded-xl border border-brand-blue/10 bg-white p-4 sm:p-5"
+      >
+        <h2 className="text-sm font-semibold text-brand-text">Invite user</h2>
+        <p className="mt-1 text-sm text-brand-text/60">
+          Sends a Supabase invite email with a link to set a password and access the dashboard.
+        </p>
+        <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <Input
+            label="Email"
+            type="email"
+            value={inviteEmail}
+            onChange={(e) => setInviteEmail(e.target.value)}
+            placeholder="staff@example.com"
+            required
+          />
+          <Select
+            label="Role"
+            value={inviteRole}
+            onChange={(e) => setInviteRole(e.target.value as AppRole)}
+            options={[
+              ...(canAssignSuperAdmin ? [{ value: "super_admin", label: "Super Admin" }] : []),
+              { value: "admin", label: "Admin" },
+              { value: "staff", label: "Staff" },
+            ]}
+          />
+          {inviteRole === "staff" ? (
+            <Select
+              label="Assigned branch"
+              value={inviteBranchId}
+              onChange={(e) => setInviteBranchId(e.target.value)}
+              options={[
+                { value: "", label: "Select branch" },
+                ...branches.map((b) => ({ value: b.id, label: b.name })),
+              ]}
+            />
+          ) : (
+            <div className="hidden xl:block" aria-hidden="true" />
+          )}
+          <div className="flex items-end">
+            <Button type="submit" className="w-full md:w-auto" disabled={inviting}>
+              {inviting ? "Sending invite..." : "Send invite"}
+            </Button>
+          </div>
+        </div>
+      </form>
+
       {!canAssignSuperAdmin && (
         <p className="mb-4 text-sm text-brand-text/60">
           You are signed in as {roleLabel(currentUserRole)}. Only a Super Admin can assign the Super

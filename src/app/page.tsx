@@ -1,16 +1,9 @@
-import {
-  Clock,
-  MapPin,
-  Phone,
-  Sparkles,
-  Wind,
-  Shirt,
-} from "lucide-react";
-import { Logo } from "@/components/Logo";
+import { Clock, MapPin, Phone, Shirt, Sparkles, Wind } from "lucide-react";
+import { BranchMapSection } from "@/components/BranchMapSection";
 import { SiteFooter } from "@/components/SiteFooter";
-import { SiteHeaderActions } from "@/components/SiteHeaderActions";
+import { SiteHeader } from "@/components/SiteHeader";
 import { Button } from "@/components/ui/Button";
-import { BUSINESS } from "@/lib/constants";
+import { BUSINESS, getBranchDetails } from "@/lib/constants";
 import { createClient } from "@/lib/supabase/server";
 
 const BRANCHES = [
@@ -32,7 +25,11 @@ const BRANCHES = [
 ];
 
 const SERVICES = [
-  { icon: Shirt, title: "Wash", desc: "Gentle, thorough cleaning for all fabrics" },
+  {
+    icon: Shirt,
+    title: "Wash",
+    desc: "Gentle, thorough cleaning for all fabrics",
+  },
   { icon: Wind, title: "Dry", desc: "Fast, efficient drying with care" },
   { icon: Sparkles, title: "Fold", desc: "Neatly folded and ready to wear" },
 ];
@@ -43,45 +40,62 @@ export default async function HomePage() {
 
   const displayBranches =
     branches && branches.length > 0
-      ? branches.map((b) => ({
-          name: b.name,
-          location: `${b.location}, Negros Occidental`,
-          slug: b.slug,
-        }))
-      : BRANCHES;
+      ? branches.map((b) => {
+          const details = getBranchDetails(b.slug);
+          return {
+            name: b.name,
+            location: `${b.location}, Negros Occidental`,
+            slug: b.slug,
+            storefront: details.storefront,
+            hours: details.hours,
+          };
+        })
+      : BRANCHES.map((branch) => {
+          const details = getBranchDetails(branch.slug);
+          return {
+            ...branch,
+            storefront: details.storefront,
+            hours: details.hours,
+          };
+        });
 
   return (
     <div className="min-h-screen">
+      <SiteHeader heroBlend />
+
       {/* Hero */}
-      <header className="relative overflow-hidden bg-gradient-to-br from-brand-light/40 via-white to-brand-blue/10">
-        <div className="absolute inset-0 opacity-30">
-          <div className="absolute top-10 left-10 w-32 h-32 rounded-full bg-brand-light/50 blur-3xl" />
-          <div className="absolute bottom-10 right-10 w-48 h-48 rounded-full bg-brand-blue/20 blur-3xl" />
-        </div>
+      <header className="relative h-[min(85vh,720px)] min-h-[520px] w-full overflow-hidden">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/hero.webp"
+          alt=""
+          aria-hidden="true"
+          className="absolute inset-0 h-full w-full object-cover object-center"
+          fetchPriority="high"
+        />
+        <div className="absolute inset-0 bg-gradient-to-br from-white/90 via-white/75 to-brand-light/35" />
 
-        <nav className="relative z-10 flex items-center justify-between px-6 py-4 max-w-6xl mx-auto">
-          <Logo size="sm" showTagline={false} />
-          <SiteHeaderActions />
-        </nav>
-
-        <section className="relative z-10 flex flex-col items-center text-center px-6 pt-12 pb-24 max-w-4xl mx-auto">
-          <Logo size="lg" />
-          <p className="mt-6 text-lg text-brand-text/70 max-w-xl">
-            {BUSINESS.bio}
+        <section className="relative z-10 mx-auto flex h-full max-w-4xl flex-col items-center justify-center px-6 py-24 text-center">
+          <h1 className="text-4xl font-bold tracking-tight text-brand-text sm:text-5xl md:text-6xl">
+            {BUSINESS.name}
+          </h1>
+          <p className="mt-3 text-sm font-medium tracking-[0.2em] text-brand-blue sm:text-base">
+            {BUSINESS.tagline}
           </p>
+          <p className="mt-6 max-w-xl text-lg text-brand-text/80">{BUSINESS.bio}</p>
 
           <div className="mt-8 flex flex-wrap items-center justify-center gap-6 text-sm text-brand-text/80">
             <span className="flex items-center gap-2">
-              <Clock className="w-4 h-4 text-brand-blue" />
+              <Clock className="h-4 w-4 text-brand-blue" />
               {BUSINESS.hours}
             </span>
             <span className="flex items-center gap-2">
-              <Phone className="w-4 h-4 text-brand-blue" />
+              <Phone className="h-4 w-4 text-brand-blue" />
               {BUSINESS.phone}
             </span>
           </div>
 
-          <div className="mt-10 flex flex-wrap gap-4 justify-center">
+          <div className="mt-10 flex flex-wrap justify-center gap-4">
             <Button href={`tel:${BUSINESS.phone.replace(/\s/g, "")}`} size="lg">
               Call Us
             </Button>
@@ -99,7 +113,7 @@ export default async function HomePage() {
             Our Services
           </h2>
           <p className="text-center text-brand-text/60 mb-12 max-w-lg mx-auto">
-            Professional laundry care across all three branches.
+            Done with care at every step.
           </p>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 max-w-4xl mx-auto">
@@ -120,8 +134,8 @@ export default async function HomePage() {
       </section>
 
       {/* Branches */}
-      <section id="branches" className="py-20 px-6 bg-brand-light/10">
-        <div className="max-w-6xl mx-auto">
+      <section id="branches" className="bg-brand-light/10 pt-20">
+        <div className="mx-auto max-w-6xl px-6">
           <h2 className="text-3xl font-bold text-center text-brand-text mb-4">
             Our Branches
           </h2>
@@ -133,28 +147,47 @@ export default async function HomePage() {
             {displayBranches.map((branch) => (
               <div
                 key={branch.slug}
-                className="rounded-2xl bg-white border border-brand-blue/10 p-6 shadow-sm hover:shadow-md transition-shadow"
+                className="group relative min-h-100 overflow-hidden rounded-2xl border border-brand-blue/10 shadow-sm transition-shadow hover:shadow-lg"
               >
-                <div className="w-10 h-10 rounded-full bg-brand-blue/10 flex items-center justify-center mb-4">
-                  <MapPin className="w-5 h-5 text-brand-blue" />
+                {branch.storefront && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={branch.storefront}
+                    alt=""
+                    aria-hidden="true"
+                    className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                  />
+                )}
+                <div className="absolute inset-0 bg-gradient-to-t from-brand-text/95 via-brand-text/70 to-brand-text/30" />
+                <div className="relative flex h-full flex-col justify-end p-6 text-white">
+                  <div className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/15 backdrop-blur-sm">
+                    <MapPin className="h-5 w-5 text-white" />
+                  </div>
+                  <h3 className="text-lg font-semibold drop-shadow-sm">
+                    {branch.name}
+                  </h3>
+                  <p className="mt-1 text-sm text-white/85 drop-shadow-sm">
+                    {branch.location}
+                  </p>
+                  <p className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-brand-light drop-shadow-sm">
+                    <Clock className="h-4 w-4 shrink-0" />
+                    {branch.hours}
+                  </p>
                 </div>
-                <h3 className="font-semibold text-brand-text text-lg mb-1">
-                  {branch.name}
-                </h3>
-                <p className="text-sm text-brand-text/60">{branch.location}</p>
-                <p className="mt-3 text-sm text-brand-blue font-medium">
-                  {BUSINESS.hours}
-                </p>
               </div>
             ))}
           </div>
         </div>
+
+        <BranchMapSection />
       </section>
 
       {/* CTA */}
       <section className="py-20 px-6 bg-brand-blue text-white">
         <div className="max-w-3xl mx-auto text-center">
-          <h2 className="text-3xl font-bold mb-4">Ready for Fresh, Clean Laundry?</h2>
+          <h2 className="text-3xl font-bold mb-4">
+            Ready for Fresh, Clean Laundry?
+          </h2>
           <p className="text-white/80 mb-8">
             Visit any of our branches or call us to get started.
           </p>

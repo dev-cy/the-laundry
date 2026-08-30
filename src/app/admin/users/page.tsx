@@ -21,7 +21,8 @@ export default async function UsersPage() {
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-brand-text">Users</h1>
         <p className="text-brand-text/60">
-          Manage roles and delete accounts. Super Admins can delete any user except themselves.
+          Invite staff and admins by email, manage roles, and delete accounts. Super Admins can delete
+          any user except themselves.
         </p>
       </div>
       <UsersAdminClient />
