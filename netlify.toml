@@ -1,4 +1,16 @@
-# After adding www.the-laundry.cyregjr.com in Netlify + DNS, send www → primary domain.
+# Canonical host: custom subdomain. Netlify permalinks and www go there.
+[[redirects]]
+  from = "https://the-laundry.netlify.app/*"
+  to = "https://the-laundry.cyregjr.com/:splat"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "http://the-laundry.netlify.app/*"
+  to = "https://the-laundry.cyregjr.com/:splat"
+  status = 301
+  force = true
+
 [[redirects]]
   from = "https://www.the-laundry.cyregjr.com/*"
   to = "https://the-laundry.cyregjr.com/:splat"

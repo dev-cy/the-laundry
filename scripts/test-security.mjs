@@ -180,6 +180,61 @@ assert(
   canAccessAdminPath("admin", "/admin/sign-in-overview")
 );
 
+function getCanonicalRedirectLocation(requestUrl, context, siteUrl) {
+  const raw = siteUrl?.trim();
+  if (!raw) return null;
+  let canonical;
+  try {
+    canonical = new URL(raw).origin;
+    const host = new URL(canonical).hostname;
+    if (host === "localhost" || host === "127.0.0.1") return null;
+  } catch {
+    return null;
+  }
+  const incoming = new URL(requestUrl);
+  if (incoming.hostname === new URL(canonical).hostname) return null;
+  if (incoming.hostname === "localhost") return null;
+  const isDefaultNetlify = incoming.hostname === "the-laundry.netlify.app";
+  const isNetlifyApp = incoming.hostname.endsWith(".netlify.app");
+  if (!isDefaultNetlify && !(isNetlifyApp && context === "production")) return null;
+  return new URL(incoming.pathname + incoming.search, canonical).toString();
+}
+
+console.log("\ncanonical host redirect:");
+const prod = "https://the-laundry.cyregjr.com";
+assert(
+  "netlify.app production -> subdomain",
+  getCanonicalRedirectLocation(
+    "https://the-laundry.netlify.app/admin/sign-in-overview",
+    "production",
+    prod
+  ) === "https://the-laundry.cyregjr.com/admin/sign-in-overview"
+);
+assert(
+  "unique production deploy -> subdomain",
+  getCanonicalRedirectLocation(
+    "https://6a93f625f0cc67000865930d--the-laundry.netlify.app/admin",
+    "production",
+    prod
+  ) === "https://the-laundry.cyregjr.com/admin"
+);
+assert(
+  "deploy preview stays",
+  getCanonicalRedirectLocation(
+    "https://123--the-laundry.netlify.app/admin",
+    "deploy-preview",
+    prod
+  ) === null
+);
+assert(
+  "already on subdomain",
+  getCanonicalRedirectLocation(`${prod}/admin`, "production", prod) === null
+);
+assert(
+  "localhost ignored",
+  getCanonicalRedirectLocation("http://localhost:3000/admin", "production", prod) === null
+);
+
 console.log("\nbuildPeriodIncome:");
 assert(
   "net = gross - expenses",
